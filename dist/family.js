@@ -13,7 +13,7 @@
   const storeKey = 'lumo-f:' + token.slice(0, 12);
   let store = { mine: [], name: '' };
   try { store = { ...store, ...JSON.parse(localStorage.getItem(storeKey) || '{}') }; } catch {}
-  const openHelp = new Set(); let failures = 0, state = null, base = null, revision = 0, clubName = '', dirty = false, saving = false, timer = null, screen = 'loading', error = '', changing = false, search = '', pickDraft = [];
+  const openHelp = new Set(); let tab = 'home', groupFilter = '', failures = 0, state = null, base = null, revision = 0, clubName = '', dirty = false, saving = false, timer = null, screen = 'loading', error = '', changing = false, search = '', pickDraft = [];
   let dialogEvent = null;
 
   const remember = () => { try { localStorage.setItem(storeKey, JSON.stringify(store)); } catch {} };
@@ -212,7 +212,7 @@
   function eventCard(e) {
     const kids = myAttendees(e), meet = e.meetingTime ? `Rendez-vous à ${E(e.meetingTime)}${e.meetingAddress ? ' · ' + E(e.meetingAddress) : ''}` : '', place = e.address ? E(e.address) : '';
     const answered = kids.every(a => a.availability !== 'unknown' && a.transport.outbound !== 'unknown' && a.transport.return !== 'unknown');
-    return `<section class="card f-event"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2>
+    return `<section class="card f-event" id="ev-${E(e.id)}"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2>
       <p class="where">${meet ? meet + '<br>' : ''}${place ? place + (mapLink(e.address) ? ` <a href="${mapLink(e.address)}" target="_blank" rel="noopener">Itinéraire</a>` : '') : ''}</p>
       ${e.notes ? `<p class="muted">${E(e.notes)}</p>` : ''}
       ${kids.map(a => kidBlock(e, a)).join('')}
@@ -231,6 +231,32 @@
     return `${demoBanner()}${header()}${list.length ? list.map(eventCard).join('') : '<section class="card"><h2>Rien de prévu pour le moment</h2><p>Les prochains rendez-vous de votre enfant apparaîtront ici dès que le coach les aura convoqués. Gardez ce lien : vous pourrez le rouvrir quand vous voulez.</p></section>'}`;
   }
 
+  function calendar() {
+    const mineIds = mine(), list = upcoming().filter(e => !groupFilter || e.groups.includes(groupFilter));
+    const card = e => {
+      const concerned = e.attendees.some(a => mineIds.includes(a.memberId) && a.selected);
+      const kids = C.activeAttendees(e).filter(a => member(a.memberId)?.kind === 'child');
+      const verdict = ([l, label]) => { const waiting = kids.filter(a => !['confirmed', 'parent'].includes(a.transport[l])).length; return `<span class="verdict ${!kids.length ? '' : waiting ? 'bad' : 'ok'}">${label} : ${!kids.length ? '-' : waiting ? waiting + ' sans place' : 'complet'}</span>`; };
+      return `<article class="card"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2><p>${e.groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>${e.meetingTime ? `<p>Rendez-vous à ${E(e.meetingTime)}${e.meetingAddress ? ' · ' + E(e.meetingAddress) : ''}</p>` : ''}<p class="verdicts">${LEGS.map(verdict).join(' ')}</p>${concerned ? `<button class="primary" data-f="goto" data-e="${E(e.id)}">Répondre pour ${E(mineIds.filter(id => attendee(e, id)?.selected).map(first).join(' et '))}</button>` : '<p class="muted">Votre enfant n’est pas convoqué.</p>'}</article>`;
+    };
+    return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Calendrier</h1></div></div><label><span>Groupe</span><select id="f-group"><option value="">Tous les groupes</option>${state.groups.map(g => `<option value="${E(g.id)}" ${g.id === groupFilter ? 'selected' : ''}>${E(g.name)}</option>`).join('')}</select></label><div class="grid">${list.map(card).join('') || '<p class="empty">Aucun rendez-vous à venir.</p>'}</div>`;
+  }
+
+  function familyTab() {
+    const kids = mine();
+    return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Ma famille</h1></div></div>
+      <section class="card"><h2>Mes enfants</h2>${kids.map(id => `<p><strong>${E(member(id).name)}</strong> ${member(id).groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>`).join('') || '<p class="muted">Aucun enfant choisi.</p>'}<div class="actions"><button class="primary" data-f="who">Changer d’enfant</button><button data-f="add-child">Ajouter un enfant</button></div></section>
+      <section class="card"><h2>Mon prénom</h2><p class="muted">Il apparaît sur les voitures et les coups de main.</p><label><span>Prénom</span><input id="f-myname" maxlength="40" value="${E(store.name)}" autocomplete="given-name"></label></section>
+      <section class="card"><h2>L’autre parent</h2><p>Parents séparés ? Envoyez-lui ce même lien : il touche le même enfant et répond lui aussi. La réponse la plus récente fait foi.</p><div class="actions"><button class="primary" data-f="share">Envoyer le lien</button><button data-f="copy">Copier le lien</button></div></section>`;
+  }
+
+  function navBar() {
+    let nav = $('#f-nav');
+    if (!nav) { nav = document.createElement('nav'); nav.id = 'f-nav'; nav.className = 'site-nav f-nav'; nav.setAttribute('aria-label', 'Navigation'); document.body.appendChild(nav); }
+    nav.hidden = screen !== 'home';
+    nav.innerHTML = [['home', 'Accueil'], ['events', 'Calendrier'], ['family', 'Ma famille']].map(([k, t]) => `<button data-f="tab" data-p="${k}" aria-pressed="${tab === k}">${t}</button>`).join('');
+  }
+
   function who() {
     const q = search.trim().toLocaleLowerCase('fr'), kids = state.members.filter(m => m.kind === 'child' && (!q || m.name.toLocaleLowerCase('fr').includes(q))).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     const chosen = pickDraft;
@@ -247,7 +273,8 @@
     if (screen === 'loading') { app.innerHTML = '<div class="empty" role="status">Chargement…</div>'; return; }
     if (screen === 'error') { app.innerHTML = `<section class="card"><h2>Ce lien ne fonctionne pas</h2><p>${E(error)}</p><button class="primary" data-f="retry">Réessayer</button></section>`; return; }
     const open = document.activeElement?.id;
-    app.innerHTML = screen === 'who' ? who() : home();
+    app.innerHTML = screen === 'who' ? who() : tab === 'events' ? calendar() : tab === 'family' ? familyTab() : home();
+    navBar();
     if (open === 'f-search') { const el = $('#f-search'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
 
@@ -302,17 +329,23 @@
     }
     else if (a === 'add-child') addChildDialog();
     else if (a === 'close') closeDialog();
+    else if (a === 'tab') { tab = d.p; render(); window.scrollTo(0, 0); }
+    else if (a === 'goto') { tab = 'home'; render(); document.getElementById('ev-' + d.e)?.scrollIntoView({ block: 'start' }); }
+    else if (a === 'share') { const url = location.href; (navigator.share ? navigator.share({ title: 'Lumo', text: 'Le lien pour répondre pour notre enfant', url }) : Promise.reject()).catch(() => { navigator.clipboard?.writeText(url); say('Lien copié.'); }); }
+    else if (a === 'copy') { try { navigator.clipboard.writeText(location.href); say('Lien copié.'); } catch { say('Copiez l’adresse de la page.'); } }
     else if (a === 'retry') boot();
     else if (a === 'demo-reset') { localStorage.removeItem(demoKey); localStorage.removeItem(storeKey); location.reload(); }
   });
   document.addEventListener('toggle', ev => { const d = ev.target; if (d.classList?.contains('help')) { if (d.open) openHelp.add(d.dataset.e); else openHelp.delete(d.dataset.e); } }, true);
   document.addEventListener('change', ev => {
     const el = ev.target;
+    if (el.id === 'f-group') { groupFilter = el.value; render(); return; }
     if (el.dataset.f === 'pick') { pickDraft = el.checked ? [...new Set([...pickDraft, el.value])] : pickDraft.filter(x => x !== el.value); const go = document.querySelector('[data-f="who-done"]'); if (go) go.disabled = !pickDraft.length; }
   });
   document.addEventListener('input', ev => {
     if (ev.target.id === 'f-search') { search = ev.target.value; const name = $('#f-name')?.value; if (name !== undefined) store.name = name; render(); }
     if (ev.target.id === 'f-name') store.name = ev.target.value;
+    if (ev.target.id === 'f-myname') { store.name = ev.target.value.trim(); remember(); }
   });
   document.addEventListener('submit', async ev => {
     const form = ev.target.closest('form[data-f-form]'); if (!form) return;
