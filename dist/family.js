@@ -64,7 +64,12 @@
   function apply(result) {
     const payload = C.clone(result.payload);
     try { D.validatePool(payload); } catch { C.validateState(payload); }
-    state = payload; base = C.clone(payload); revision = result.club.revision; clubName = result.club.name || '';
+    state = payload;
+    let migrated = false;
+    const legacy = store.defaults || store.usualDefaults || {};
+    for (const m of state.members) if (legacy[m.id] && !m.defaults) { m.defaults = C.clone(legacy[m.id]); migrated = true; }
+    if (migrated) { delete store.defaults; delete store.usualDefaults; remember(); }
+    base = C.clone(payload); revision = result.club.revision; clubName = result.club.name || '';
   }
   async function pull() { apply(await rpc('lumo_link_open', { p_token: token })); }
 
@@ -73,6 +78,16 @@
     try { fn(); D.validatePool(state); } catch (e) { console.error(e); state = previous; render(); say(e.message || 'Action impossible.'); return false; }
     dirty = true; indicator(); render(); clearTimeout(timer); timer = setTimeout(flush, 400);
     return true;
+  }
+  function applyUsual() {
+    let changed = false;
+    for (const e of upcoming()) for (const a of myAttendees(e)) {
+      if (a.answeredAt) continue;
+      const before = JSON.stringify(a);
+      C.applyDefaults(a, member(a.memberId), e.type);
+      if (JSON.stringify(a) !== before) { a.answeredBy = store.name || 'Un parent'; a.answeredAt = new Date().toISOString(); changed = true; }
+    }
+    return changed;
   }
   async function flush() {
     if (saving || !dirty) return;
@@ -267,8 +282,14 @@
 
   function familyTab() {
     const kids = mine();
+    const defaults = m => {
+      const d = m?.defaults || {}, training = d.training || (!d.match && !d.training ? d : {}), match = d.match || {};
+      const select = (type, key, label, values, value) => `<label><span>${label}</span><select data-default="${type}.${key}" data-member="${E(m.id)}">${values.map(([v, text]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
+      const presence = [['', 'À répondre chaque fois'], ['present', 'Présent'], ['absent', 'Absent']], transport = [['', 'À répondre chaque fois'], ['parent', 'Avec ses parents'], ['need', 'Cherche une place']];
+      return `<fieldset class="group-pick usual"><legend>Réponses habituelles de ${E(first(m.id))}</legend><p class="muted">Appliquées aux réponses encore inconnues.</p><h3>Entraînements</h3>${select('training', 'presence', 'Présence', presence, training.presence ?? training.availability)}${select('training', 'transport.outbound', 'Aller', transport, training.transport?.outbound)}${select('training', 'transport.return', 'Retour', transport, training.transport?.return)}<h3>Matchs et événements</h3>${select('match', 'presence', 'Présence', presence, match.presence ?? match.availability)}${select('match', 'transport.outbound', 'Aller', transport, match.transport?.outbound)}${select('match', 'transport.return', 'Retour', transport, match.transport?.return)}</fieldset>`;
+    };
     return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Ma famille</h1></div></div>
-      <section class="card"><h2>Mes enfants</h2>${kids.map(id => `<p><strong>${E(member(id).name)}</strong> ${member(id).groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>`).join('') || '<p class="muted">Aucun enfant choisi.</p>'}<div class="actions"><button class="primary" data-f="who">Changer d’enfant</button><button data-f="add-child">Ajouter un enfant</button></div></section>
+      <section class="card"><h2>Mes enfants</h2>${kids.map(id => `<p><strong>${E(member(id).name)}</strong> ${member(id).groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}${defaults(member(id))}</p>`).join('') || '<p class="muted">Aucun enfant choisi.</p>'}<div class="actions"><button class="primary" data-f="who">Changer d’enfant</button><button data-f="add-child">Ajouter un enfant</button></div></section>
       <section class="card"><h2>Mon prénom</h2><p class="muted">Il apparaît sur les voitures et les coups de main.</p><label><span>Prénom</span><input id="f-myname" maxlength="40" value="${E(store.name)}" autocomplete="given-name"></label></section>
       <section class="card"><h2>L’autre parent</h2><p>Parents séparés ? Envoyez-lui ce même lien : il touche le même enfant et répond lui aussi. La réponse la plus récente fait foi.</p><div class="actions"><button class="primary" data-f="share">Envoyer le lien</button><button data-f="copy">Copier le lien</button></div></section>`;
   }
@@ -367,6 +388,17 @@
     const el = ev.target;
     if (el.id === 'f-group') { groupFilter = el.value; render(); return; }
     if (el.dataset.f === 'pick') { pickDraft = el.checked ? [...new Set([...pickDraft, el.value])] : pickDraft.filter(x => x !== el.value); const go = document.querySelector('[data-f="who-done"]'); if (go) go.disabled = !pickDraft.length; }
+    if (el.dataset.default) {
+      const m = member(el.dataset.member);
+      commit(() => {
+        if (!m) throw new Error('Participant introuvable.');
+        const parts = el.dataset.default.split('.'), type = parts.shift(), key = parts.join('.'), d = m.defaults = m.defaults || {}, scope = d[type] = d[type] || {};
+        if (key === 'presence') scope.presence = el.value || undefined;
+        else { const leg = key.split('.').pop(); scope.transport = { ...(scope.transport || {}), [leg]: el.value || undefined }; }
+        for (const e of upcoming()) if (e.type === type) { const a = attendee(e, m.id); if (a && !a.answeredAt) C.applyDefaults(a, m, type); }
+      });
+      say('Réponse habituelle enregistrée pour ' + m.name + '.');
+    }
   });
   document.addEventListener('input', ev => {
     if (ev.target.id === 'f-search') { search = ev.target.value; const name = $('#f-name')?.value; if (name !== undefined) store.name = name; render(); }
@@ -400,7 +432,7 @@
   /* ---------- démarrage ---------- */
   async function boot() {
     screen = 'loading'; render();
-    try { await pull(); screen = mine().length ? 'home' : 'who'; pickDraft = [...mine()]; }
+    try { await pull(); if (applyUsual()) { dirty = true; clearTimeout(timer); timer = setTimeout(flush, 400); } screen = mine().length ? 'home' : 'who'; pickDraft = [...mine()]; }
     catch (e) { screen = 'error'; error = e.offline ? 'Pas de connexion. Vérifiez internet puis réessayez.' : e.message; }
     indicator(); render();
   }
