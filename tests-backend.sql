@@ -106,6 +106,22 @@ begin
  begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent adds participant'; exception when insufficient_privilege then null; end;
  candidate=jsonb_set(payload,'{events,0,attendees,0,availability}','"present"');
  ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ -- Parent: réponses par défaut (defaults) uniquement pour les participants liés
+ candidate=jsonb_set(payload,'{members,0,defaults}','{"availability":"present","transport":{"outbound":"need","return":"need"}}'::jsonb);
+ ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ if payload#>>'{members,0,defaults,availability}'<>'present' then raise exception 'FAIL: parent linked child defaults not saved'; end if;
+ candidate=jsonb_set(payload,'{members,1,defaults}','{"availability":"present"}'::jsonb);
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent changes unlinked child defaults'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{members,0,kind}','"adult"');
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent changes linked participant kind'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(jsonb_set(payload,'{members,0,defaults}','{"availability":"absent"}'::jsonb),'{members,0,name}','"Renamed"');
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent renames while editing defaults'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(jsonb_set(payload,'{events,0,attendees,0,availability}','"absent"'),'{events,0,attendees,0,transport,return}','"parent"');
+ ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ if payload#>>'{events,0,attendees,0,availability}'<>'absent' then raise exception 'FAIL: parent attendee answer not saved'; end if;
+ candidate=jsonb_set(jsonb_set(payload,'{members,0,groups}',jsonb_build_array(g2)),'{members,0,defaults}','{"availability":"unknown"}'::jsonb);
+ ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ if payload#>'{members,0,groups}'<>jsonb_build_array(g2) then raise exception 'FAIL: parent groups still editable with defaults'; end if;
  perform set_config('request.jwt.claim.sub',admin_id::text,true); perform set_config('request.jwt.claims',jsonb_build_object('sub',admin_id,'role','authenticated')::text,true);
  candidate=jsonb_set(jsonb_set(payload,'{members,1,groups}',jsonb_build_array(g2)),'{members,1,name}','"Admin renamed"');
  ctx=public.save_lumo_club(club_id,rev,candidate);

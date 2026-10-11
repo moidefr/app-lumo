@@ -4,7 +4,7 @@ begin
  if (oldp-'events'-'members') is distinct from (newp-'events'-'members') or jsonb_array_length(oldp->'events')<>jsonb_array_length(newp->'events') or jsonb_array_length(oldp->'members')<>jsonb_array_length(newp->'members') then raise exception 'Les parents ne peuvent pas modifier l’organisation.' using errcode='42501'; end if;
  for mi in select value from jsonb_array_elements(oldp->'members') loop
   select v into nm from jsonb_array_elements(newp->'members') v where v->>'id'=mi->>'id';
-  if nm is null or (case when (mi->>'id')=any(m.member_ids) then (mi-'groups') is distinct from (nm-'groups') else mi is distinct from nm end) then raise exception 'Vous pouvez choisir les groupes uniquement de votre famille.' using errcode='42501'; end if;
+  if nm is null or (case when (mi->>'id')=any(m.member_ids) then (mi-'groups'-'defaults') is distinct from (nm-'groups'-'defaults') else mi is distinct from nm end) then raise exception 'Vous pouvez choisir les groupes uniquement de votre famille.' using errcode='42501'; end if;
  end loop;
  for e in select value from jsonb_array_elements(oldp->'events') loop
   select v into ne from jsonb_array_elements(newp->'events') v where v->>'id'=e->>'id';
