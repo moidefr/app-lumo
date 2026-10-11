@@ -40,31 +40,16 @@ Sur la page de compétition, choisir « Ajouter les matchs à votre calendrier �
 
 Il n’y a pas encore de récupération planifiée des calendriers : réimporter pour actualiser. Les heures sans fuseau sont interprétées à Paris. Les événements sans date/titre/identifiant exploitable sont ignorés et comptabilisés dans la prévisualisation. Les convocations sont choisies par le coach.
 
-## Supabase (optionnel)
+## Supabase et comptes
 
-1. Exécuter `supabase.sql` dans l’éditeur SQL du projet.
-2. Créer les comptes des testeurs dans Supabase Auth avec email/mot de passe.
-3. Dans Réglages, renseigner l’URL du projet et sa clé publique publishable/anon. Ne jamais utiliser de clé service_role dans le navigateur.
-4. Se connecter, puis « Créer un espace avec ces données ».
-5. Transmettre le code de l’espace aux testeurs ; ils se connectent puis rejoignent avec ce code.
+Le backend est décrit dans `README-BACKEND.md` (schéma `supabase.sql`, RPC, RLS, tests `tests-backend.sql`). Le frontend utilise `config.js` (URL et clé publique publishable uniquement, jamais de clé service_role) et `cloud.js` (auth + RPC).
 
-Les données sont partagées par espace, avec lecture des changements toutes les 10 secondes lorsque l’onglet est visible. Les sauvegardes utilisent un numéro de révision : en cas de modification simultanée, la bêta bloque l’écrasement et demande d’exporter les modifications locales puis recharger. Tous les membres de l’espace ont les mêmes droits d’édition. Le bouton Mode coach n’est pas une séparation de permissions.
+1. Créer un compte, se connecter, puis créer un club (`create_lumo_club`) ou rejoindre avec une invitation valide 7 jours (`join_lumo_club`).
+2. Le responsable attribue les rôles et rattache les enfants aux comptes parents dans Accès et familles.
+3. Les modifications passent par `save_lumo_club` avec contrôle de révision ; les droits sont appliqués par la base (parents : leur famille, voitures et missions ; admins/coachs : organisation).
 
-Le SQL et l’intégration REST sont fournis, mais doivent être vérifiés dans votre projet Supabase : aucun compte ni projet Supabase réel n’a été configuré pendant la création de cette bêta. Le partage de lien seul ne transfère pas les données locales ; les destinataires doivent rejoindre le même espace.
+Ne pas rejouer `supabase.sql` sur la base déjà migrée.
 
 ## Notifications
 
-Le journal interne et le bouton de test fonctionnent dans la bêta ouverte, après autorisation. Sur iPhone, l’ajout à l’écran d’accueil est nécessaire pour le Web Push sur un système compatible.
-
-La réception `push` et l’enregistrement des abonnements dans Supabase sont prêts. Pour recevoir une notification lorsque l’app est fermée, il manque le service serveur d’envoi et la liaison entre les actions, les destinataires et ce service. Fournir une clé publique VAPID dans Réglages permet d’enregistrer l’appareil lorsque Supabase est connecté. La clé privée VAPID et la clé Supabase service_role doivent rester exclusivement sur le serveur. Aucun push à distance, email ou SMS n’est envoyé par cette bêta.
-
-## Vérification
-
-```powershell
-node tests.cjs
-node --check dist/app.js
-node --check dist/core.js
-node --check dist/sw.js
-```
-
-Les tests vérifient les capacités, les sous-groupes, les doublons, les statuts indépendants, les conversions de dates et les réimportations iCal.
+Boîte de notifications Supabase, préférences, test personnel et Web Push par appareil (`notifications.js`, `sw.js`). L'envoi est assuré par la fonction `supabase/functions` (`lumo-push`) et le cron défini dans `supabase/push.sql` ; l'état de déploiement est dans `supabase/NOTIFICATIONS-STATUS.md`. La réception sur un téléphone réel reste à confirmer. Le guide utilisateur est `GUIDE.md`.

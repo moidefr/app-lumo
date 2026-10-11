@@ -4,31 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#12314A">
-  <title>Lumo · Bêta</title>
+  <meta name="description" content="Les matchs, les trajets et les coups de main du Handball Club Crest Pays de Saillans.">
+  <title>Lumo · Mon club</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="practical.css">
+  <link rel="stylesheet" href="help.css">
+  <script defer src="config.js"></script>
   <script defer src="core.js"></script>
   <script defer src="demo.js"></script>
+  <script defer src="domain.js"></script>
+  <script defer src="cloud.js"></script>
+  <script defer src="help.js"></script>
+  <script defer src="notifications.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
   <header class="site-header">
-    <div class="site-brand"><a class="brand" href="#" aria-label="Lumo · événements">lumo<span class="brand-point" aria-hidden="true">.</span></a><span class="tag">Bêta</span></div>
-    <div class="toolbar"><span id="save-state">Mode local</span><button id="install" hidden>Installer</button><button data-action="load-full-demo">Charger la démo complète</button><button data-action="settings">Réglages</button></div>
+    <div class="site-brand"><a class="brand" href="#" aria-label="Lumo · accueil">lumo<span class="brand-point" aria-hidden="true">.</span></a><span class="tag" id="demo-tag">Lumo</span></div>
+    <div class="toolbar"><span id="save-state" role="status">Connexion…</span><button id="install" hidden>Installer</button><button id="coach-toggle" data-action="coach-toggle" hidden>Vue coach</button><button data-action="help">Aide</button><button id="account-button" data-action="settings">Se connecter</button></div>
   </header>
-  <p class="notice">Bêta avec données fictives. Mode local : les données restent dans ce navigateur. Le mode coach sert à tester les fonctions.</p>
-  <nav class="site-nav" aria-label="Navigation principale">
-    <button data-page="events" aria-pressed="true">Événements</button>
+  <p class="notice" id="app-notice" hidden></p>
+  <nav class="site-nav" id="nav" aria-label="Navigation principale" hidden>
+    <button data-page="home" aria-pressed="true">Accueil</button>
+    <button data-page="events" aria-pressed="false">Calendrier</button>
     <button data-page="groups" aria-pressed="false">Groupes</button>
-    <button data-page="family" aria-pressed="false">Participants</button>
+    <button data-page="family" aria-pressed="false">Ma famille</button>
     <button data-page="notifications" aria-pressed="false">Notifications <span id="unread"></span></button>
   </nav>
   <main id="app"></main>
   <p id="feedback" role="status" aria-live="polite"></p>
-  <dialog id="editor"><div id="dialog-content"></div></dialog>
-  <footer><span>Lumo · Les matchs, les trajets, les coups de main.</span><span>Exportez vos données avant de changer de navigateur.</span></footer>
+  <dialog id="editor" aria-label="Formulaire Lumo"><div id="dialog-content"></div></dialog>
+  <footer><span>Lumo · Les matchs, les trajets, les coups de main.</span><button data-action="help" data-topic="privacy">Aide et données personnelles</button></footer>
 </body>
 </html>

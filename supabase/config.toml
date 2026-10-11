@@ -1,0 +1,2 @@
+[functions.lumo-push]
+verify_jwt = false
