@@ -230,20 +230,126 @@ begin
  begin perform public.lumo_add_child(club,'Enfant 13','{}'); raise exception 'FAIL: 13th child accepted'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
  select count(*) into n from jsonb_array_elements(ctx#>'{payload,members}') v where v->>'kind'='child';
  if n<>13 then raise exception 'FAIL: children count %',n; end if;
- -- Coups de main : chacun choisit pour son propre compte, valeurs connues uniquement.
- begin perform public.lumo_set_helps(club,array['buvette','inconnu']); raise exception 'FAIL: unknown help accepted'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
- if (public.lumo_context(club)#>>'{membership,helps_set}')::boolean then raise exception 'FAIL: helps_set before choice'; end if;
- ctx=public.lumo_set_helps(club,array['buvette','gouter','buvette']);
- if ctx#>'{membership,helps}'<>'["buvette","gouter"]'::jsonb or ctx#>>'{membership,helps_set}'<>'true' then raise exception 'FAIL: helps saved/dedup/helps_set'; end if;
- perform pg_temp.as_user(b); ctx=public.lumo_context(club);
- if ctx#>'{membership,helps}'<>'[]'::jsonb or ctx#>>'{membership,helps_set}'<>'false' then raise exception 'FAIL: parent changed another account helps'; end if;
- ctx=public.lumo_set_helps(club,'{}');
- if ctx#>>'{membership,helps_set}'<>'true' or ctx#>'{membership,helps}'<>'[]'::jsonb then raise exception 'FAIL: empty helps choice'; end if;
- perform pg_temp.as_user(adm); ctx=public.lumo_context(club);
- if not exists(select 1 from jsonb_array_elements(ctx->'memberships') v where v->>'display_name'='Parent A' and v->'helps'='["buvette","gouter"]'::jsonb) then raise exception 'FAIL: memberships expose helps'; end if;
- perform pg_temp.as_user(y);
- begin perform public.lumo_set_helps(club,array['table']); raise exception 'FAIL: non-member sets helps'; exception when insufficient_privilege then null; end;
  execute 'reset role';
 end $$;
-select 'PASS: real authenticated/anon RLS, roles, linked family, vehicle ownership/capacity, volunteering, notifications, children, shared parents, signed answers, CAS and clean workspace' as result;
+-- Accès par lien sans compte (rôle anon), jeton coach/admin, rotation, enfants ajoutés par lien.
+do $$
+declare adm uuid=gen_random_uuid(); coach uuid=gen_random_uuid(); par uuid=gen_random_uuid(); out uuid=gen_random_uuid(); club uuid; ctx jsonb; payload jsonb; candidate jsonb; invitation jsonb; tok text; tok2 text; res jsonb; rev bigint; cmid text; n int;
+begin
+ insert into auth.users(id,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data)
+ select u,'lumo-test-'||u||'@example.invalid','',now(),'{"provider":"email","providers":["email"]}','{}' from unnest(array[adm,coach,par,out]) u;
+ perform pg_temp.as_user(adm); execute 'set local role authenticated';
+ ctx=public.create_lumo_club('Club lien transactionnel','Admin test'); club=(ctx#>>'{club,id}')::uuid; invitation=public.lumo_create_invite(club);
+ perform pg_temp.as_user(coach); perform public.join_lumo_club(invitation->>'code','Coach test');
+ perform pg_temp.as_user(par); perform public.join_lumo_club(invitation->>'code','Parent compte');
+ perform pg_temp.as_user(out);
+ begin perform public.lumo_family_link(club); raise exception 'FAIL: non-member reads link'; exception when insufficient_privilege then null; end;
+ perform pg_temp.as_user(adm); perform public.lumo_set_member_access(club,coach,'coach','{}');
+ ctx=public.lumo_context(club); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ payload=jsonb_set(payload,'{members}','[{"id":"c1","name":"Enfant un","kind":"child","parentName":"P1","groups":["g13f"]},{"id":"c2","name":"Enfant deux","kind":"child","parentName":"P2","groups":["g13f"]}]');
+ payload=jsonb_set(payload,'{events}',jsonb_build_array(
+  jsonb_build_object('id','ev-future','title','Match futur','type','match','groups',jsonb_build_array('g13f'),'date','2030-10-12','time','14:00','meetingTime','13:00','meetingAddress','','address','Gymnase','notes','','cancelled',false,'rosterPublished',false,'transportMode','pool','attendees','[{"memberId":"c1","availability":"unknown","selected":true,"team":"A","transport":{"outbound":"need","return":"need"}},{"memberId":"c2","availability":"unknown","selected":true,"team":"A","transport":{"outbound":"need","return":"need"}}]'::jsonb,'offers','[]'::jsonb,'missions','[{"id":"mi1","name":"Table","needed":2,"assigned":[]}]'::jsonb),
+  jsonb_build_object('id','ev-past','title','Match passé','type','match','groups',jsonb_build_array('g13f'),'date','2020-10-12','time','14:00','meetingTime','','meetingAddress','','address','','notes','','cancelled',false,'rosterPublished',false,'transportMode','pool','attendees','[]'::jsonb,'offers','[]'::jsonb,'missions','[]'::jsonb),
+  jsonb_build_object('id','ev-cancel','title','Match annulé','type','match','groups',jsonb_build_array('g13f'),'date','2030-11-12','time','14:00','meetingTime','','meetingAddress','','address','','notes','','cancelled',true,'rosterPublished',false,'transportMode','pool','attendees','[]'::jsonb,'offers','[]'::jsonb,'missions','[]'::jsonb),
+  jsonb_build_object('id','ev-other','title','Autre groupe','type','match','groups',jsonb_build_array('g15g'),'date','2030-11-13','time','14:00','meetingTime','','meetingAddress','','address','','notes','','cancelled',false,'rosterPublished',false,'transportMode','pool','attendees','[]'::jsonb,'offers','[]'::jsonb,'missions','[]'::jsonb)));
+ ctx=public.save_lumo_club(club,rev,payload);
+ -- jeton : admin et coach oui, parent compte non, idempotent, jamais dans le contexte
+ tok=public.lumo_family_link(club);
+ if length(tok)<24 or public.lumo_family_link(club)<>tok then raise exception 'FAIL: family link token shape/idempotence'; end if;
+ perform pg_temp.as_user(coach);
+ if public.lumo_family_link(club)<>tok then raise exception 'FAIL: coach reads same token'; end if;
+ begin perform public.lumo_rotate_family_link(club); raise exception 'FAIL: coach rotates link'; exception when insufficient_privilege then null; end;
+ perform pg_temp.as_user(par);
+ begin perform public.lumo_family_link(club); raise exception 'FAIL: parent account reads link'; exception when insufficient_privilege then null; end;
+ begin perform public.lumo_rotate_family_link(club); raise exception 'FAIL: parent account rotates link'; exception when insufficient_privilege then null; end;
+ if position(tok in public.lumo_context(club)::text)>0 then raise exception 'FAIL: token leaked in context'; end if;
+ -- anon
+ execute 'reset role'; perform set_config('request.jwt.claim.sub','',true); perform set_config('request.jwt.claims','{"role":"anon"}',true); execute 'set local role anon';
+ begin perform public.lumo_family_link(club); raise exception 'FAIL: anon family_link'; exception when insufficient_privilege then null; end;
+ begin perform public.lumo_rotate_family_link(club); raise exception 'FAIL: anon rotate'; exception when insufficient_privilege then null; end;
+ begin perform token from lumo_private.lumo_family_links; raise exception 'FAIL: anon reads tokens table'; exception when insufficient_privilege then null; end;
+ begin perform count(*) from public.lumo_clubs; raise exception 'FAIL: anon reads clubs'; exception when insufficient_privilege then null; end;
+ begin perform public.lumo_link_open('faux'); raise exception 'FAIL: bad token open'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ begin perform public.lumo_link_open(null); raise exception 'FAIL: null token open'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ begin perform public.lumo_link_save('faux',1,'{}'); raise exception 'FAIL: bad token save'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ begin perform public.lumo_link_add_child('faux','Zed','{}'); raise exception 'FAIL: bad token add_child'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ res=public.lumo_link_open(tok); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ if res#>>'{club,id}'<>club::text or res#>>'{club,name}'<>'Club lien transactionnel' or (select count(*) from jsonb_object_keys(res->'club'))<>3 or (select count(*) from jsonb_object_keys(res))<>2 or jsonb_array_length(payload->'events')<>4 or position(tok in res::text)>0 or res::text like '%@example.invalid%' then raise exception 'FAIL: link_open shape/leak'; end if;
+ -- réponses OK
+ candidate=jsonb_set(jsonb_set(jsonb_set(payload,'{events,0,attendees,0,availability}','"present"'),'{events,0,attendees,0,answeredBy}','"Maman de Un"'),'{events,0,attendees,0,answeredAt}','"2030-10-10T08:30:00.000Z"');
+ candidate=jsonb_set(candidate,'{events,0,attendees,1,transport,return}','"parent"');
+ res=public.lumo_link_save(tok,rev,candidate); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ if rev<>3 or payload#>>'{events,0,attendees,0,answeredBy}'<>'Maman de Un' or payload#>>'{events,0,attendees,1,transport,return}'<>'parent' then raise exception 'FAIL: link answers saved/revision (rev=%)',rev; end if;
+ -- voiture ajoutée / modifiée / supprimée
+ candidate=jsonb_set(payload,'{events,0,offers}',jsonb_build_array(jsonb_build_object('id','car-link','driver','Papa lien','parentOf','Enfant un','ownerUserId','link','totalSeats',5,'onboard','[]'::jsonb,'backup',false,'legs','{"outbound":{"enabled":true,"offered":3,"reserved":0},"return":{"enabled":true,"offered":3,"reserved":0}}'::jsonb)));
+ res=public.lumo_link_save(tok,rev,candidate); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ candidate=jsonb_set(payload,'{events,0,offers,0,legs,outbound,offered}','2');
+ res=public.lumo_link_save(tok,rev,candidate); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ if payload#>>'{events,0,offers,0,legs,outbound,offered}'<>'2' then raise exception 'FAIL: link car modify'; end if;
+ candidate=jsonb_set(payload,'{events,0,offers,0,ownerUserId}',to_jsonb(adm::text));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link car owner change'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,offers}',(payload#>'{events,0,offers}')||jsonb_build_array(jsonb_build_object('id','car-uid','driver','X','parentOf','','ownerUserId',adm,'totalSeats',5,'onboard','[]'::jsonb,'backup',false,'legs','{"outbound":{"enabled":true,"offered":1,"reserved":0},"return":{"enabled":true,"offered":1,"reserved":0}}'::jsonb)));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link car with account owner'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,offers}','[]');
+ res=public.lumo_link_save(tok,rev,candidate); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ if jsonb_array_length(payload#>'{events,0,offers}')<>0 then raise exception 'FAIL: link car delete'; end if;
+ -- mission assigned
+ candidate=jsonb_set(payload,'{events,0,missions,0,assigned}','["Papa Un","Tata"]');
+ res=public.lumo_link_save(tok,rev,candidate); payload=res->'payload'; rev=(res#>>'{club,revision}')::bigint;
+ if payload#>'{events,0,missions,0,assigned}'<>'["Papa Un","Tata"]'::jsonb then raise exception 'FAIL: link mission assigned'; end if;
+ candidate=jsonb_set(payload,'{events,0,missions,0,assigned}',jsonb_build_array(repeat('x',61)));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: long volunteer name'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ candidate=jsonb_set(payload,'{events,0,attendees,0,answeredBy}',to_jsonb(repeat('x',61)));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: long answeredBy'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ candidate=jsonb_set(payload,'{events,0,attendees,0,answeredAt}','"hier"');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: bad answeredAt'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ -- interdits
+ candidate=jsonb_set(payload,'{events,0,title}','"Pirate"');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link edits title'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{groups}',(payload->'groups')||jsonb_build_array(jsonb_set(payload->'groups'->0,'{id}','"gnew"')));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link adds group'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(jsonb_set(payload,'{members}',(payload->'members')-0),'{events,0,attendees}',(payload#>'{events,0,attendees}')-0);
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link deletes participant'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{members,0,name}','"Renamed"');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link renames participant'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,attendees,0,team}','"B"');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link changes team'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,missions,0,needed}','5');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link changes mission needed'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events}',(payload->'events')||jsonb_build_array(jsonb_set(payload->'events'->0,'{id}','"ev-new"')));
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link adds event'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{notifications}','[{"x":1}]');
+ begin perform public.lumo_link_save(tok,rev,candidate); raise exception 'FAIL: link edits notifications'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,attendees,0,availability}','"absent"');
+ begin perform public.lumo_link_save(tok,rev-1,candidate); raise exception 'FAIL: stale revision accepted'; exception when serialization_failure then null; end;
+ execute 'reset role'; if exists(select 1 from public.lumo_notifications where club_id=club and dedupe_key not like club||':2:%') then raise exception 'FAIL: link created notifications'; end if; execute 'set local role anon';
+ -- add_child
+ begin perform public.lumo_link_add_child(tok,'ENFANT UN','{}'); raise exception 'FAIL: duplicate name (case)'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ begin perform public.lumo_link_add_child(tok,'   ','{}'); raise exception 'FAIL: empty name'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ begin perform public.lumo_link_add_child(tok,'Zed','{inconnu}'); raise exception 'FAIL: unknown group'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ begin perform public.lumo_link_add_child(tok,'Zed','{g13f,g13g,g15f,g15g,g18f,g18g}'); raise exception 'FAIL: more than 5 groups'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ res=public.lumo_link_add_child(tok,'  Nina  ','{g13f}'); payload=res->'payload';
+ cmid=(select v->>'id' from jsonb_array_elements(payload->'members') v where v->>'name'='Nina');
+ if cmid is null or cmid not like 'm-%' or (res#>>'{club,revision}')::bigint<>(rev+1) or not exists(select 1 from jsonb_array_elements(payload->'members') v where v->>'id'=cmid and v->>'kind'='child' and v->>'parentName'='' and v->'groups'='["g13f"]'::jsonb) then raise exception 'FAIL: add_child member'; end if;
+ select count(*) into n from jsonb_array_elements(payload->'events') e cross join jsonb_array_elements(e->'attendees') a where a->>'memberId'=cmid and e->>'id'='ev-future' and a->>'availability'='unknown' and a->'selected'='true'::jsonb and a#>>'{transport,outbound}'='need' and a#>>'{transport,return}'='need';
+ if n<>1 or (select count(*) from jsonb_array_elements(payload->'events') e cross join jsonb_array_elements(e->'attendees') a where a->>'memberId'=cmid)<>1 then raise exception 'FAIL: add_child attendees count %',n; end if;
+ begin perform public.lumo_link_add_child(tok,'nina','{}'); raise exception 'FAIL: duplicate added child'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ -- limite de 300 participants
+ execute 'reset role';
+ update public.lumo_clubs k set payload=jsonb_set(k.payload,'{members}',(select jsonb_agg(jsonb_build_object('id','bulk'||i,'name','Bulk '||i,'kind','child','parentName','','groups','[]'::jsonb)) from generate_series(1,300) i),false)
+  where k.id=club;
+ update public.lumo_clubs k set payload=jsonb_set(k.payload,'{events}',(select jsonb_agg(jsonb_set(e,'{attendees}','[]')) from jsonb_array_elements(k.payload->'events') e)) where k.id=club;
+ execute 'set local role anon';
+ begin perform public.lumo_link_add_child(tok,'Un de trop','{}'); raise exception 'FAIL: 301st participant'; exception when raise_exception then if sqlerrm like 'FAIL:%' then raise; end if; end;
+ -- rotation : l'ancien lien meurt, le nouveau marche
+ execute 'reset role'; perform pg_temp.as_user(adm); execute 'set local role authenticated';
+ tok2=public.lumo_rotate_family_link(club);
+ if tok2=tok or length(tok2)<24 or public.lumo_family_link(club)<>tok2 then raise exception 'FAIL: rotation'; end if;
+ execute 'reset role'; perform set_config('request.jwt.claim.sub','',true); perform set_config('request.jwt.claims','{"role":"anon"}',true); execute 'set local role anon';
+ begin perform public.lumo_link_open(tok); raise exception 'FAIL: old link still works'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ begin perform public.lumo_link_save(tok,1,'{}'); raise exception 'FAIL: old link saves'; exception when raise_exception then if sqlerrm<>'INVALID_LINK' then raise; end if; end;
+ if public.lumo_link_open(tok2)#>>'{club,id}'<>club::text then raise exception 'FAIL: new link'; end if;
+ execute 'reset role';
+end $$;
+select 'PASS: real authenticated/anon RLS, roles, linked family, vehicle ownership/capacity, volunteering, notifications, children, shared parents, signed answers, family link without account, CAS and clean workspace' as result;
 rollback;

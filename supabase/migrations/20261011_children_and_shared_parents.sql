@@ -131,20 +131,4 @@ revoke all on function public.lumo_add_child(uuid,text,text[]),public.lumo_creat
 grant execute on function public.lumo_add_child(uuid,text,text[]),public.lumo_create_child_invite(uuid,text),public.lumo_accept_child_invite(text,text),public.lumo_unlink_child(uuid,text,uuid) to authenticated;
 grant execute on function lumo_private.add_child(uuid,text,text[]),lumo_private.create_child_invite(uuid,text),lumo_private.accept_child_invite(text,text),lumo_private.unlink_child(uuid,text,uuid) to authenticated;
 
--- Coups de main choisis par chaque compte (to_jsonb(membership) expose helps et helps_set).
-alter table public.lumo_memberships add column helps text[] not null default '{}',add column helps_set boolean not null default false;
-create function lumo_private.set_helps(p_id uuid,p_helps text[]) returns jsonb language plpgsql security definer set search_path='' as $$
-declare m public.lumo_memberships; h text[];
-begin
- m=lumo_private.require_member(p_id);
- if p_helps is null or cardinality(p_helps)>8 or exists(select 1 from unnest(p_helps) x where x is null or x<>all(array['arbitrage','table','salle','buvette','gouter','gateaux','maillots','accompagnement'])) then raise exception 'Coup de main inconnu.'; end if;
- select coalesce(array_agg(x order by o),'{}') into h from (select x,min(o) o from unnest(p_helps) with ordinality t(x,o) group by x) s;
- update public.lumo_memberships set helps=h,helps_set=true where club_id=p_id and user_id=m.user_id;
- return lumo_private.context(p_id);
-end $$;
-create function public.lumo_set_helps(p_id uuid,p_helps text[]) returns jsonb language sql security invoker set search_path='' as $$select lumo_private.set_helps(p_id,p_helps)$$;
-revoke all on function lumo_private.set_helps(uuid,text[]) from public,anon,authenticated;
-revoke all on function public.lumo_set_helps(uuid,text[]) from public,anon;
-grant execute on function public.lumo_set_helps(uuid,text[]) to authenticated;
-grant execute on function lumo_private.set_helps(uuid,text[]) to authenticated;
 notify pgrst,'reload schema';
