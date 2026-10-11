@@ -34,7 +34,7 @@
     if(attendee.availability==='present')for(const leg of ['outbound','return'])if((attendee.transport[leg]==='unknown'||(attendee.transport[leg]==='need'&&!attendee.answeredAt))&&['parent','need'].includes(d.transport?.[leg]))attendee.transport[leg]=d.transport[leg];
     return attendee;
   }
-  function newAttendee(memberId,member,type) {return applyDefaults({memberId,availability:'unknown',selected:true,team:'',transport:{outbound:'need',return:'need'}},member,type);}
+  function newAttendee(memberId,member,type) {return applyDefaults({memberId,availability:'unknown',selected:true,team:'',transport:type==='training'?{outbound:'unknown',return:'unknown'}:{outbound:'need',return:'need'}},member,type);}
   function activeAttendees(event) {return event.attendees.filter(attendee=>attendee.selected&&attendee.availability!=='absent');}
   function capacity(event,leg) {
     const offers=event.offers.filter(offer=>offer.legs[leg].enabled);

@@ -21,7 +21,9 @@
   const demoKey = 'lumo-f-demo-data';
   function demoStore() {
     try { const saved = JSON.parse(localStorage.getItem(demoKey) || 'null'); if (saved?.payload) return saved; } catch {}
-    return { revision: 1, payload: D.prepareDemo(C.seedFullDemo()) };
+    const fresh = D.prepareDemo(C.seedFullDemo());
+    for (const e of fresh.events) if (e.type === 'training' && !e.offers.length) for (const a of e.attendees) a.transport = { outbound: 'unknown', return: 'unknown' };
+    return { revision: 1, payload: fresh };
   }
   function demoRpc(name, body) {
     const db = demoStore(), reply = () => { localStorage.setItem(demoKey, JSON.stringify(db)); return { club: { id: 'demo', name: 'Club de démonstration', revision: db.revision }, payload: db.payload }; };
@@ -29,7 +31,7 @@
     if (name === 'lumo_link_save') { db.payload = body.p_payload; db.revision++; return reply(); }
     if (name === 'lumo_link_add_child') {
       const id = 'm-' + C.id('demo'); db.payload.members.push({ id, name: body.p_name, kind: 'child', parentName: '', groups: body.p_group_ids });
-      for (const e of db.payload.events) if (e.date >= today() && !e.cancelled && e.groups.some(g => body.p_group_ids.includes(g))) e.attendees.push({ memberId: id, availability: 'unknown', selected: true, team: '', transport: { outbound: 'need', return: 'need' } });
+      for (const e of db.payload.events) if (e.date >= today() && !e.cancelled && e.groups.some(g => body.p_group_ids.includes(g))) e.attendees.push({ memberId: id, availability: 'unknown', selected: true, team: '', transport: e.type === 'training' ? { outbound: 'unknown', return: 'unknown' } : { outbound: 'need', return: 'need' } });
       db.revision++; return reply();
     }
     throw new Error('Action indisponible dans la démo.');
@@ -42,6 +44,10 @@
   const day = v => v ? new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }).format(new Date(v + 'T12:00:00Z')) : 'Date à préciser';
   const upcoming = () => state.events.filter(e => e.date >= today() && !e.cancelled).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const myAttendees = e => e.attendees.filter(a => mine().includes(a.memberId) && a.selected);
+  const isTraining = e => e.type === 'training';
+  const invited = a => a.transport.outbound !== 'unknown' || a.transport.return !== 'unknown';
+  const carpoolOn = e => !isTraining(e) || e.offers.length > 0;
+  const circle = e => C.activeAttendees(e).filter(a => member(a.memberId)?.kind === 'child' && (!isTraining(e) || invited(a)));
   const myEvents = () => upcoming().filter(e => myAttendees(e).length);
 
   function say(text) {
@@ -100,8 +106,7 @@
       if (!a) throw new Error('Cet enfant n’est pas convoqué.');
       if (value === 'absent' && e.offers.some(c => c.onboard.includes(id) && Object.values(c.legs).some(l => l.enabled))) throw new Error('Cet enfant est dans une voiture : modifiez d’abord la voiture.');
       a.availability = value;
-      if (value === 'absent') a.transport = { outbound: 'unknown', return: 'unknown' };
-      else for (const l of ['outbound', 'return']) if (a.transport[l] === 'unknown') a.transport[l] = 'need';
+      if (value === 'present' && !isTraining(e)) for (const l of ['outbound', 'return']) if (a.transport[l] === 'unknown') a.transport[l] = 'need';
       stamp(a);
     });
   }
@@ -111,8 +116,18 @@
       if (!a) throw new Error('Cet enfant n’est pas convoqué.');
       if (D.pooled(e, leg).onboard.has(id)) throw new Error('Cet enfant est dans une voiture : modifiez la voiture pour le retirer.');
       if (value === 'confirmed' && a.transport[leg] !== 'confirmed' && D.pooled(e, leg).free < 1) throw new Error('Il n’y a plus de place. Demandez à un parent d’en proposer.');
+      if (isTraining(e) && a.availability === 'absent') throw new Error('Dites d’abord que vous venez à l’entraînement.');
       if (a.availability !== 'present') a.availability = 'present';
       a.transport[leg] = value;
+      stamp(a);
+    });
+  }
+  function carpoolChoice(eid, id, join) {
+    commit(() => {
+      const e = state.events.find(x => x.id === eid), a = attendee(e, id);
+      if (!a) throw new Error('Cet enfant n’est pas convoqué.');
+      if (join) { if (a.availability === 'absent') throw new Error('Dites d’abord que vous venez à l’entraînement.'); a.availability = 'present'; a.transport = { outbound: 'need', return: 'need' }; }
+      else { if (e.offers.some(c => c.onboard.includes(id) && Object.values(c.legs).some(l => l.enabled))) throw new Error('Cet enfant est dans une voiture : modifiez la voiture pour le retirer.'); a.transport = { outbound: 'unknown', return: 'unknown' }; }
       stamp(a);
     });
   }
@@ -131,7 +146,7 @@
     const driver = String(data.get('driver') || '').trim();
     if (!driver) throw new Error('Indiquez le prénom du conducteur.');
     store.name = store.name || driver; remember();
-    const onboard = data.getAll('onboard'), legs = {};
+    const onboard = data.getAll('onboard'), invite = data.getAll('invite'), legs = {};
     for (const [l] of LEGS) {
       const on = data.has(l + 'On'), offered = on ? Math.max(0, Math.min(8, Number(data.get(l + 'Free') || 0))) : 0;
       legs[l] = { enabled: on, offered, reserved: 0 };
@@ -154,6 +169,14 @@
           a.availability = 'present'; a.transport[l] = 'parent';
         }
       }
+      if (isTraining(e)) {
+        const firstCar = !e.offers.length, chosen = new Set([...onboard, ...invite, ...(old ? [] : myAttendees(e).map(a => a.memberId))]);
+        for (const a of e.attendees) {
+          if (onboard.includes(a.memberId)) continue;
+          if (chosen.has(a.memberId)) { if (a.selected && !invited(a)) a.transport = { outbound: 'need', return: 'need' }; }
+          else if (firstCar) a.transport = { outbound: 'unknown', return: 'unknown' };
+        }
+      }
       if (old) Object.assign(old, car); else e.offers.push(car);
     });
   }
@@ -170,7 +193,7 @@
 
   /* ---------- affichage ---------- */
   function seats(e, leg, label) {
-    const kids = C.activeAttendees(e).filter(a => member(a.memberId)?.kind === 'child');
+    const kids = circle(e);
     const placed = kids.filter(a => ['confirmed', 'parent'].includes(a.transport[leg]));
     const waiting = kids.filter(a => !['confirmed', 'parent'].includes(a.transport[leg]));
     const free = Math.max(0, D.pooled(e, leg).free);
@@ -183,15 +206,19 @@
   }
 
   function kidBlock(e, a) {
-    const id = a.memberId, absent = a.availability === 'absent', pooled = LEGS.map(([l]) => D.pooled(e, l));
-    const legs = LEGS.map(([l, label], i) => {
+    const id = a.memberId, absent = a.availability === 'absent', training = isTraining(e), pooled = LEGS.map(([l]) => D.pooled(e, l));
+    const showLegs = !absent && (!training || (carpoolOn(e) && invited(a)));
+    const legs = !showLegs ? '' : LEGS.map(([l, label], i) => {
       const car = e.offers.find(c => c.legs[l].enabled && c.onboard.includes(id));
       if (car) return `<div class="leg"><strong>${label}</strong><p class="status ok">Dans la voiture de ${E(car.driver)}</p></div>`;
       const cur = a.transport[l], p = pooled[i];
       const btn = (v, text, disabled = false) => `<button data-f="tr" data-e="${E(e.id)}" data-m="${E(id)}" data-l="${l}" data-v="${v}" aria-pressed="${cur === v}" ${disabled ? 'disabled' : ''}>${text}</button>`;
       return `<div class="leg"><strong>${label}</strong><div class="seg3">${btn('need', 'Cherche une place')}${btn('confirmed', 'Place trouvée', cur !== 'confirmed' && p.free < 1)}${btn('parent', 'Avec ses parents')}</div></div>`;
     }).join('');
-    return `<article class="kid"><div class="kid-head"><h3>${E(first(id))}</h3><div class="seg2"><button data-f="av" data-e="${E(e.id)}" data-m="${E(id)}" data-v="present" aria-pressed="${a.availability === 'present'}">Présent</button><button data-f="av" data-e="${E(e.id)}" data-m="${E(id)}" data-v="absent" aria-pressed="${absent}">Absent</button></div></div>${absent ? '<p class="muted">Pas de transport nécessaire.</p>' : legs}${a.answeredBy && a.answeredAt ? `<p class="muted tiny">Dernière réponse : ${E(a.answeredBy)}, ${E(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).format(new Date(a.answeredAt)))}</p>` : ''}</article>`;
+    const extra = !training || absent ? '' : carpoolOn(e) ? (invited(a) ? `<p><button data-f="cp-off" data-e="${E(e.id)}" data-m="${E(id)}">Je ne covoiture pas</button></p>` : `<p><button data-f="cp-on" data-e="${E(e.id)}" data-m="${E(id)}">Je veux covoiturer</button></p>`) : '';
+    const note = absent ? (training ? (invited(a) ? '<p class="muted">Vous ne venez pas : vous sortez du covoiturage.</p>' : '') : '<p class="muted">Pas de transport nécessaire.</p>') : '';
+    const yes = training ? 'Je viens' : 'Présent', no = training ? 'Je ne viens pas' : 'Absent';
+    return `<article class="kid"><div class="kid-head"><h3>${E(first(id))}</h3><div class="seg2"><button data-f="av" data-e="${E(e.id)}" data-m="${E(id)}" data-v="present" aria-pressed="${a.availability === 'present'}">${yes}</button><button data-f="av" data-e="${E(e.id)}" data-m="${E(id)}" data-v="absent" aria-pressed="${absent}">${no}</button></div></div>${note}${legs}${extra}${a.answeredBy && a.answeredAt ? `<p class="muted tiny">Dernière réponse : ${E(a.answeredBy)}, ${E(new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).format(new Date(a.answeredAt)))}</p>` : ''}</article>`;
   }
 
   function cars(e) {
@@ -216,8 +243,7 @@
       <p class="where">${meet ? meet + '<br>' : ''}${place ? place + (mapLink(e.address) ? ` <a href="${mapLink(e.address)}" target="_blank" rel="noopener">Itinéraire</a>` : '') : ''}</p>
       ${e.notes ? `<p class="muted">${E(e.notes)}</p>` : ''}
       ${kids.map(a => kidBlock(e, a)).join('')}
-      <div class="seats"><h3>Places en voiture</h3>${LEGS.map(([l, label]) => seats(e, l, label)).join('')}</div>
-      <div class="cars-box"><h3>Voitures</h3>${cars(e)}</div>${helpers(e)}</section>`;
+      ${carpoolOn(e) ? `<div class="seats"><h3>${isTraining(e) ? 'Covoiturage de cet entraînement' : 'Places en voiture'}</h3>${isTraining(e) ? '<p class="muted">Il dépend de votre présence : si vous ne venez pas à l’entraînement, vous n’êtes plus dans le covoiturage.</p>' : ''}${LEGS.map(([l, label]) => seats(e, l, label)).join('')}</div><div class="cars-box"><h3>Voitures</h3>${cars(e)}</div>` : `<div class="cars-box"><h3>Covoiturage</h3><p class="muted">Pas de covoiturage pour cet entraînement. Vous conduisez ? Créez-en un et ajoutez les enfants concernés : leurs parents pourront répondre.</p><button data-f="car" data-e="${E(e.id)}">Créer un covoiturage</button></div>`}${e.missions.length ? helpers(e) : ''}</section>`;
   }
 
   function demoBanner() { return DEMO ? '<p class="notice demo-notice">Démonstration : personnes et rendez-vous fictifs. Rien n’est envoyé au club. <button data-f="demo-reset">Recommencer</button></p>' : ''; }
@@ -235,9 +261,9 @@
     const mineIds = mine(), list = upcoming().filter(e => !groupFilter || e.groups.includes(groupFilter));
     const card = e => {
       const concerned = e.attendees.some(a => mineIds.includes(a.memberId) && a.selected);
-      const kids = C.activeAttendees(e).filter(a => member(a.memberId)?.kind === 'child');
+      const kids = circle(e);
       const verdict = ([l, label]) => { const waiting = kids.filter(a => !['confirmed', 'parent'].includes(a.transport[l])).length; return `<span class="verdict ${!kids.length ? '' : waiting ? 'bad' : 'ok'}">${label} : ${!kids.length ? '-' : waiting ? waiting + ' sans place' : 'complet'}</span>`; };
-      return `<article class="card"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2><p>${e.groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>${e.meetingTime ? `<p>Rendez-vous à ${E(e.meetingTime)}${e.meetingAddress ? ' · ' + E(e.meetingAddress) : ''}</p>` : ''}<p class="verdicts">${LEGS.map(verdict).join(' ')}</p>${concerned ? `<button class="primary" data-f="goto" data-e="${E(e.id)}">Répondre pour ${E(mineIds.filter(id => attendee(e, id)?.selected).map(first).join(' et '))}</button>` : '<p class="muted">Votre enfant n’est pas convoqué.</p>'}</article>`;
+      return `<article class="card"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2><p>${e.groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>${e.meetingTime ? `<p>Rendez-vous à ${E(e.meetingTime)}${e.meetingAddress ? ' · ' + E(e.meetingAddress) : ''}</p>` : ''}<p class="verdicts">${carpoolOn(e) ? LEGS.map(verdict).join(' ') : '<span class="verdict">Présence seulement</span>'}</p>${concerned ? `<button class="primary" data-f="goto" data-e="${E(e.id)}">Répondre pour ${E(mineIds.filter(id => attendee(e, id)?.selected).map(first).join(' et '))}</button>` : '<p class="muted">Votre enfant n’est pas convoqué.</p>'}</article>`;
     };
     return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Calendrier</h1></div></div><label><span>Groupe</span><select id="f-group"><option value="">Tous les groupes</option>${state.groups.map(g => `<option value="${E(g.id)}" ${g.id === groupFilter ? 'selected' : ''}>${E(g.name)}</option>`).join('')}</select></label><div class="grid">${list.map(card).join('') || '<p class="empty">Aucun rendez-vous à venir.</p>'}</div>`;
   }
@@ -297,10 +323,11 @@
     dialogEvent = eid;
     const kids = myAttendees(e), onboard = old?.onboard || [];
     const leg = (l, label) => { const c = old?.legs[l]; return `<div class="leg-form"><label class="check"><input type="checkbox" name="${l}On" ${(c?.enabled ?? true) ? 'checked' : ''}><span>${label}</span></label><label><span>Places libres pour d’autres enfants</span><input name="${l}Free" type="number" min="0" max="8" inputmode="numeric" value="${c ? c.offered : 2}"></label></div>`; };
-    dialog(old ? 'Ma voiture' : 'Je propose des places', `<input type="hidden" name="id" value="${E(old?.id || '')}">
+    dialog(old ? 'Ma voiture' : isTraining(e) && !e.offers.length ? 'Créer un covoiturage' : 'Je propose des places', `<input type="hidden" name="id" value="${E(old?.id || '')}">
       <label><span>Conducteur (prénom)</span><input name="driver" required maxlength="40" value="${E(old?.driver || store.name)}"></label>
       <label><span>Parent de</span><input name="parentOf" maxlength="60" value="${E(old?.parentOf ?? kids.map(a => first(a.memberId)).join(' et '))}"></label>
       ${kids.length ? `<div class="group-pick"><p class="muted" style="width:100%">Mon enfant est dans la voiture</p>${kids.map(a => `<label class="check"><input type="checkbox" name="onboard" value="${E(a.memberId)}" ${onboard.includes(a.memberId) ? 'checked' : ''}><span>${E(first(a.memberId))}</span></label>`).join('')}</div>` : ''}
+      ${isTraining(e) ? (() => { const others = e.attendees.filter(a => a.selected && member(a.memberId)?.kind === 'child' && !kids.some(k => k.memberId === a.memberId)); return others.length ? `<div class="group-pick"><p class="muted" style="width:100%">Ajouter d’autres enfants au covoiturage (leurs parents pourront répondre)</p>${others.map(a => `<label class="check"><input type="checkbox" name="invite" value="${E(a.memberId)}" ${invited(a) ? 'checked' : ''}><span>${E(member(a.memberId).name)}</span></label>`).join('')}</div>` : ''; })() : ''}
       ${leg('outbound', 'Je conduis à l’aller')}${leg('return', 'Je conduis au retour')}
       <div class="actions"><button class="primary" type="submit">Enregistrer</button><button type="button" data-f="close">Annuler</button></div>`, 'car');
   }
@@ -320,6 +347,8 @@
     if (a === 'av') setAvailability(d.e, d.m, d.v);
     else if (a === 'tr') setTransport(d.e, d.m, d.l, d.v);
     else if (a === 'mission') toggleMission(d.e, d.mid);
+    else if (a === 'cp-on') carpoolChoice(d.e, d.m, true);
+    else if (a === 'cp-off') carpoolChoice(d.e, d.m, false);
     else if (a === 'car') carDialog(d.e, d.c);
     else if (a === 'car-del') { if (confirm('Retirer cette voiture ?')) removeOffer(d.e, d.c); }
     else if (a === 'who') { pickDraft = [...mine()]; search = ''; screen = 'who'; render(); }
@@ -364,6 +393,7 @@
         const result = await rpc('lumo_link_add_child', { p_token: token, p_name: name, p_group_ids: [group] });
         apply(result);
         const added = state.members.find(m => m.name === name);
+        if (added) commit(() => { for (const e of upcoming()) if (isTraining(e)) { const a = attendee(e, added.id); if (a && !e.offers.some(c => c.onboard.includes(a.memberId))) a.transport = { outbound: 'unknown', return: 'unknown' }; } });
         if (added) { pickDraft = [...new Set([...pickDraft, added.id])]; if (screen !== 'who') { store.mine = [...new Set([...store.mine, added.id])]; remember(); } }
         closeDialog(); render(); say(name + ' est ajouté.');
       }
