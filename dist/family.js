@@ -115,7 +115,6 @@
       const e = state.events.find(x => x.id === eid), a = attendee(e, id);
       if (!a) throw new Error('Cet enfant n’est pas convoqué.');
       if (D.pooled(e, leg).onboard.has(id)) throw new Error('Cet enfant est dans une voiture : modifiez la voiture pour le retirer.');
-      if (value === 'confirmed' && a.transport[leg] !== 'confirmed' && D.pooled(e, leg).free < 1) throw new Error('Il n’y a plus de place. Demandez à un parent d’en proposer.');
       if (isTraining(e) && a.availability === 'absent') throw new Error('Dites d’abord que vous venez à l’entraînement.');
       if (a.availability !== 'present') a.availability = 'present';
       a.transport[leg] = value;
@@ -193,27 +192,25 @@
 
   /* ---------- affichage ---------- */
   function seats(e, leg, label) {
-    const kids = circle(e);
-    const placed = kids.filter(a => ['confirmed', 'parent'].includes(a.transport[leg]));
-    const waiting = kids.filter(a => !['confirmed', 'parent'].includes(a.transport[leg]));
-    const free = Math.max(0, D.pooled(e, leg).free);
+    const al = C.allocate(state, e, leg), kids = al.kids, waiting = [...al.waiting, ...al.unanswered];
     const square = (cls, n) => Array.from({ length: n }, () => `<span class="sq ${cls}" aria-hidden="true"></span>`).join('');
     const names = waiting.map(a => E(first(a.memberId))).join(', ');
     const ok = !waiting.length && kids.length > 0;
     return `<div class="seat-row"><div class="seat-head"><strong>${label}</strong><span class="verdict ${ok ? 'ok' : kids.length ? 'bad' : ''}">${kids.length ? (ok ? 'Tous les enfants ont une place' : `${waiting.length} sans place : ${names}`) : 'Aucun enfant'}</span></div>
-      <div class="squares" role="img" aria-label="${placed.length} enfants placés, ${waiting.length} sans place, ${free} places libres">${square('full', placed.length)}${square('need', waiting.length)}${square('free', free)}</div>
-      <p class="muted">${placed.length} sur ${kids.length} enfants ont une place · ${free} place${free > 1 ? 's' : ''} libre${free > 1 ? 's' : ''}</p></div>`;
+      <div class="squares" role="img" aria-label="${al.served} enfants placés, ${waiting.length} sans place, ${al.free} places libres">${square('full', al.served)}${square('need', waiting.length)}${square('free', al.free)}</div>
+      <p class="muted">${al.served} sur ${kids.length} enfants ont une place · ${al.free} place${al.free > 1 ? 's' : ''} libre${al.free > 1 ? 's' : ''}</p></div>`;
   }
 
   function kidBlock(e, a) {
-    const id = a.memberId, absent = a.availability === 'absent', training = isTraining(e), pooled = LEGS.map(([l]) => D.pooled(e, l));
+    const id = a.memberId, absent = a.availability === 'absent', training = isTraining(e);
     const showLegs = !absent && (!training || (carpoolOn(e) && invited(a)));
     const legs = !showLegs ? '' : LEGS.map(([l, label], i) => {
       const car = e.offers.find(c => c.legs[l].enabled && c.onboard.includes(id));
       if (car) return `<div class="leg"><strong>${label}</strong><p class="status ok">Dans la voiture de ${E(car.driver)}</p></div>`;
-      const cur = a.transport[l], p = pooled[i];
-      const btn = (v, text, disabled = false) => `<button data-f="tr" data-e="${E(e.id)}" data-m="${E(id)}" data-l="${l}" data-v="${v}" aria-pressed="${cur === v}" ${disabled ? 'disabled' : ''}>${text}</button>`;
-      return `<div class="leg"><strong>${label}</strong><div class="seg3">${btn('need', 'Cherche une place')}${btn('confirmed', 'Place trouvée', cur !== 'confirmed' && p.free < 1)}${btn('parent', 'Avec ses parents')}</div></div>`;
+      const cur = a.transport[l] === 'confirmed' || (a.transport[l] === 'unknown' && !training) ? 'need' : a.transport[l], al = C.allocate(state, e, l);
+      const btn = (v, text) => `<button data-f="tr" data-e="${E(e.id)}" data-m="${E(id)}" data-l="${l}" data-v="${v}" aria-pressed="${cur === v}">${text}</button>`;
+      const status = cur === 'need' ? (al.placed.includes(a) ? '<p class="status ok">Une place est réservée</p>' : '<p class="status">Pas encore de place : un parent peut en proposer</p>') : cur === 'parent' ? '<p class="status ok">Y va avec ses parents</p>' : '';
+      return `<div class="leg"><strong>${label}</strong><div class="seg3">${btn('need', 'A besoin d’une place')}${btn('parent', 'Avec ses parents')}</div>${status}</div>`;
     }).join('');
     const extra = !training || absent ? '' : carpoolOn(e) ? (invited(a) ? `<p><button data-f="cp-off" data-e="${E(e.id)}" data-m="${E(id)}">Je ne covoiture pas</button></p>` : `<p><button data-f="cp-on" data-e="${E(e.id)}" data-m="${E(id)}">Je veux covoiturer</button></p>`) : '';
     const note = absent ? (training ? (invited(a) ? '<p class="muted">Vous ne venez pas : vous sortez du covoiturage.</p>' : '') : '<p class="muted">Pas de transport nécessaire.</p>') : '';
@@ -262,7 +259,7 @@
     const card = e => {
       const concerned = e.attendees.some(a => mineIds.includes(a.memberId) && a.selected);
       const kids = circle(e);
-      const verdict = ([l, label]) => { const waiting = kids.filter(a => !['confirmed', 'parent'].includes(a.transport[l])).length; return `<span class="verdict ${!kids.length ? '' : waiting ? 'bad' : 'ok'}">${label} : ${!kids.length ? '-' : waiting ? waiting + ' sans place' : 'complet'}</span>`; };
+      const verdict = ([l, label]) => { const al = C.allocate(state, e, l), waiting = al.waiting.length + al.unanswered.length; return `<span class="verdict ${!kids.length ? '' : waiting ? 'bad' : 'ok'}">${label} : ${!kids.length ? '-' : waiting ? waiting + ' sans place' : 'complet'}</span>`; };
       return `<article class="card"><p class="eyebrow">${E(day(e.date))}${e.time ? ' · ' + E(e.time) : ''}</p><h2>${E(e.title)}</h2><p>${e.groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>${e.meetingTime ? `<p>Rendez-vous à ${E(e.meetingTime)}${e.meetingAddress ? ' · ' + E(e.meetingAddress) : ''}</p>` : ''}<p class="verdicts">${carpoolOn(e) ? LEGS.map(verdict).join(' ') : '<span class="verdict">Présence seulement</span>'}</p>${concerned ? `<button class="primary" data-f="goto" data-e="${E(e.id)}">Répondre pour ${E(mineIds.filter(id => attendee(e, id)?.selected).map(first).join(' et '))}</button>` : '<p class="muted">Votre enfant n’est pas convoqué.</p>'}</article>`;
     };
     return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Calendrier</h1></div></div><label><span>Groupe</span><select id="f-group"><option value="">Tous les groupes</option>${state.groups.map(g => `<option value="${E(g.id)}" ${g.id === groupFilter ? 'selected' : ''}>${E(g.name)}</option>`).join('')}</select></label><div class="grid">${list.map(card).join('') || '<p class="empty">Aucun rendez-vous à venir.</p>'}</div>`;

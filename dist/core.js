@@ -40,9 +40,20 @@
     const offers=event.offers.filter(offer=>offer.legs[leg].enabled);
     return {free:offers.reduce((sum,offer)=>sum+offer.legs[leg].offered-offer.legs[leg].reserved,0),taken:offers.reduce((sum,offer)=>sum+offer.onboard.length+offer.legs[leg].reserved,0)};
   }
+  // Les enfants qui cherchent une place remplissent automatiquement les places libres, dans l'ordre des demandes.
+  function allocate(state,event,leg) {
+    const training=event.type==='training',isInvited=a=>a.transport.outbound!=='unknown'||a.transport.return!=='unknown';
+    const cars=event.offers.filter(c=>c.legs[leg].enabled),onboard=new Set(cars.flatMap(c=>c.onboard));
+    const kids=activeAttendees(event).filter(a=>state.members.find(m=>m.id===a.memberId)?.kind==='child'&&(!training||isInvited(a)||onboard.has(a.memberId)));
+    const cap=cars.reduce((sum,c)=>sum+c.legs[leg].offered,0);
+    const covered=kids.filter(a=>onboard.has(a.memberId)||a.transport[leg]==='parent');
+    const asking=kids.filter(a=>!covered.includes(a)&&(['need','confirmed'].includes(a.transport[leg])||(!training&&a.transport[leg]==='unknown'))).map((a,i)=>[a,i]).sort((x,y)=>{const p=x[0].answeredAt||'~',q=y[0].answeredAt||'~';return p<q?-1:p>q?1:x[1]-y[1];}).map(x=>x[0]);
+    const placed=asking.slice(0,cap),waiting=asking.slice(cap),unanswered=kids.filter(a=>!covered.includes(a)&&training&&a.transport[leg]==='unknown');
+    return {kids,covered,placed,waiting,unanswered,cap,free:Math.max(0,cap-placed.length),served:covered.length+placed.length};
+  }
   function transportSummary(state,event,leg) {
     const attendees=activeAttendees(event),children=attendees.filter(attendee=>state.members.find(member=>member.id===attendee.memberId)?.kind==='child');
-    return {...capacity(event,leg),people:attendees.length,confirmedPeople:attendees.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,children:children.length,confirmed:children.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,need:attendees.filter(attendee=>attendee.transport[leg]==='need').length,unknown:attendees.filter(attendee=>attendee.transport[leg]==='unknown').length};
+    return {...capacity(event,leg),people:attendees.length,confirmedPeople:attendees.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,children:children.length,confirmed:children.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,need:attendees.filter(attendee=>attendee.transport[leg]==='need').length,unknown:attendees.filter(attendee=>attendee.transport[leg]==='unknown').length,served:allocate(state,event,leg).served,waiting:allocate(state,event,leg).waiting.length+allocate(state,event,leg).unanswered.length};
   }
   function checkOffer(offer) {
     if(!Number.isInteger(offer.totalSeats)||offer.totalSeats<2||offer.totalSeats>9)throw new Error('Une voiture doit avoir de 2 à 9 places, conducteur compris.');
@@ -143,7 +154,7 @@
     }
     return state;
   }
-  const api={id,clone,esc,seed,dayString,transportLabels,groupMembers,newAttendee,applyDefaults,activeAttendees,capacity,transportSummary,checkOffer,parseIcs,importRecords,validateState,parisDateTime};
+  const api={id,clone,esc,seed,dayString,transportLabels,groupMembers,newAttendee,applyDefaults,allocate,activeAttendees,capacity,transportSummary,checkOffer,parseIcs,importRecords,validateState,parisDateTime};
   root.HandCore=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(globalThis);

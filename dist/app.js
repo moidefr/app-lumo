@@ -64,7 +64,7 @@
       for(const e of upcoming.slice(0,4)){const waiting=e.attendees.filter(a=>a.selected&&a.availability==='unknown').length,go=`data-action="open" data-id="${E(e.id)}"`;
         if(!e.rosterPublished)step('Publiez la convocation',`${e.title} · ${day(e.date)} — ${waiting?waiting+' réponse(s) attendue(s).':'choisissez les joueurs.'}`,'Ouvrir l’événement',go);
         else if(waiting)step('Relancez les familles',`${waiting} réponse(s) manquante(s) pour ${e.title}.`,'Voir les réponses',go);
-        else{const gap=['outbound','return'].find(l=>C.transportSummary(state,e,l).need>0);if(gap)step('Des enfants cherchent une place',`${e.title} · ${gap==='outbound'?'aller':'retour'}. Trouvez une voiture.`,'Voir le covoiturage',go);}}
+        else{const gap=['outbound','return'].find(l=>C.transportSummary(state,e,l).waiting>0);if(gap)step('Des enfants cherchent une place',`${e.title} · ${gap==='outbound'?'aller':'retour'}. Trouvez une voiture.`,'Voir le covoiturage',go);}}
     }else{
       if(mode==='club'&&!ownIds().length)step('Demandez à relier vos enfants','Votre compte est créé. Le responsable du club doit l’associer à vos enfants dans « Accès et familles ».','Comprendre comment faire','data-action="help" data-topic="parents"');
       for(const id of ownIds()){const m=state.members.find(x=>x.id===id);if(m&&!m.groups.length)step(`Choisissez les groupes de ${m.name}`,'Indiquez où il ou elle joue : les rendez-vous correspondants arriveront ici.','Choisir les groupes','data-page="family"');}

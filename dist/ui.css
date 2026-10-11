@@ -166,3 +166,6 @@ body input:not([type=checkbox]):not([type=radio]),body select,body textarea{bord
 .seg3 button{padding:8px 4px;font-size:15px;line-height:1.15}
 .demo-notice{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 0 14px}
 
+
+.seg3{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.leg .status{margin:8px 0 0}
