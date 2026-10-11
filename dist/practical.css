@@ -9,3 +9,7 @@
 .guide-more li{display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:.6rem 0;border-top:1px solid rgba(0,0,0,.1)}
 .group-pick{border:0;margin:.5rem 0 0;padding:0;display:flex;flex-wrap:wrap;gap:.25rem .9rem}
 .group-pick legend{font-weight:600;padding:0;margin-bottom:.25rem}
+
+.section-title{margin:1.5rem 0 .5rem}
+.guide .chip{margin-left:.4rem}
+.guide-more li button{flex:none}
