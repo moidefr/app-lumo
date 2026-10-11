@@ -28,13 +28,24 @@
     return ids;
   }
   function groupMembers(state, groupIds) {const ids=descendants(state,groupIds);return state.members.filter(member=>member.groups.some(group=>ids.has(group)));}
+  function defaultsFor(member,type) {
+    const all=member?.defaults;
+    if(!all||typeof all!=='object')return null;
+    const scoped=all[type];
+    return scoped&&typeof scoped==='object'?scoped:type==='training'?all:null;
+  }
   function applyDefaults(attendee,member,type) {
-    const d=type==='training'?member?.defaults:null;if(!d)return attendee;
-    if(attendee.availability==='unknown'&&['present','absent'].includes(d.availability))attendee.availability=d.availability;
-    if(attendee.availability==='present')for(const leg of ['outbound','return'])if((attendee.transport[leg]==='unknown'||(attendee.transport[leg]==='need'&&!attendee.answeredAt))&&['parent','need'].includes(d.transport?.[leg]))attendee.transport[leg]=d.transport[leg];
+    const d=defaultsFor(member,type);if(!d||attendee.answeredAt)return attendee;
+    const presence=d.presence??d.availability;
+    if(attendee.availability==='unknown'&&['present','absent'].includes(presence))attendee.availability=presence;
+    for(const leg of ['outbound','return'])if(attendee.transport[leg]==='unknown'&&['parent','need'].includes(d.transport?.[leg]))attendee.transport[leg]=d.transport[leg];
     return attendee;
   }
-  function newAttendee(memberId,member,type) {return applyDefaults({memberId,availability:'unknown',selected:true,team:'',transport:type==='training'?{outbound:'unknown',return:'unknown'}:{outbound:'need',return:'need'}},member,type);}
+  function newAttendee(memberId,member,type='match') {
+    const attendee=applyDefaults({memberId,availability:'unknown',selected:true,team:'',transport:{outbound:'unknown',return:'unknown'}},member,type);
+    if(type!=='training')for(const leg of ['outbound','return'])if(attendee.transport[leg]==='unknown')attendee.transport[leg]='need';
+    return attendee;
+  }
   function activeAttendees(event) {return event.attendees.filter(attendee=>attendee.selected&&attendee.availability!=='absent');}
   function capacity(event,leg) {
     const offers=event.offers.filter(offer=>offer.legs[leg].enabled);
@@ -142,7 +153,8 @@
     }
     const groups=new Set(state.groups.map(item=>item.id));const members=new Set(state.members.map(item=>item.id));
     for(const group of state.groups){if(typeof group.name!=='string'||(group.parentId&&!groups.has(group.parentId)))throw new Error('Groupe invalide.');const seen=new Set([group.id]);let parent=group.parentId;while(parent){if(seen.has(parent))throw new Error('Hiérarchie de groupes invalide.');seen.add(parent);parent=state.groups.find(item=>item.id===parent)?.parentId;}}
-    for(const member of state.members)if(member.defaults!==undefined&&(!member.defaults||typeof member.defaults!=='object'||(member.defaults.availability&&!['present','absent'].includes(member.defaults.availability))||['outbound','return'].some(leg=>member.defaults.transport?.[leg]&&!['parent','need'].includes(member.defaults.transport[leg]))))throw new Error('Réponse habituelle invalide.');
+    const validDefaults=d=>d&&typeof d==='object'&&(!d.presence||['present','absent'].includes(d.presence))&&(!d.availability||['present','absent'].includes(d.availability))&&(!d.transport||typeof d.transport==='object')&&['outbound','return'].every(leg=>!d.transport?.[leg]||['parent','need'].includes(d.transport[leg]));
+    for(const member of state.members)if(member.defaults!==undefined&&(!member.defaults||typeof member.defaults!=='object'||!validDefaults(member.defaults)||(member.defaults.training!==undefined&&!validDefaults(member.defaults.training))||(member.defaults.match!==undefined&&!validDefaults(member.defaults.match))))throw new Error('Réponse habituelle invalide.');
     for(const member of state.members)if(typeof member.name!=='string'||typeof member.parentName!=='string'||!['child','adult'].includes(member.kind)||!Array.isArray(member.groups)||member.groups.some(group=>!groups.has(group)))throw new Error('Participant invalide.');
     for(const event of state.events){
       if(typeof event.title!=='string'||!Array.isArray(event.groups)||event.groups.some(group=>!groups.has(group))||!Array.isArray(event.attendees)||!Array.isArray(event.offers)||!Array.isArray(event.missions)||typeof event.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(event.date)||!['match','training','special'].includes(event.type))throw new Error('Événement invalide.');
