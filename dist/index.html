@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="practical.css">
   <link rel="stylesheet" href="help.css">
+  <link rel="stylesheet" href="ui.css">
   <script defer src="config.js"></script>
   <script defer src="core.js"></script>
   <script defer src="demo.js"></script>
@@ -25,7 +26,7 @@
 <body>
   <header class="site-header">
     <div class="site-brand"><a class="brand" href="#" aria-label="Lumo · accueil">lumo<span class="brand-point" aria-hidden="true">.</span></a><span class="tag" id="demo-tag">Lumo</span></div>
-    <div class="toolbar"><span id="save-state" role="status">Connexion…</span><button id="install" hidden>Installer</button><button id="coach-toggle" data-action="coach-toggle" hidden>Vue coach</button><button data-action="help">Aide</button><button id="account-button" data-action="settings">Se connecter</button></div>
+    <div class="toolbar"><span id="save-state" role="status">Connexion…</span><button id="install" hidden>Installer</button><button id="coach-toggle" data-action="coach-toggle" hidden>Vue coach</button><button data-action="help" aria-label="Aide">Aide</button><button id="bell" data-page="notifications" aria-label="Notifications" hidden><span class="icon" aria-hidden="true"></span><span id="unread"></span></button><button id="account-button" data-action="settings">Se connecter</button></div>
   </header>
   <p class="notice" id="app-notice" hidden></p>
   <nav class="site-nav" id="nav" aria-label="Navigation principale" hidden>
@@ -33,7 +34,6 @@
     <button data-page="events" aria-pressed="false">Calendrier</button>
     <button data-page="groups" aria-pressed="false">Groupes</button>
     <button data-page="family" aria-pressed="false">Ma famille</button>
-    <button data-page="notifications" aria-pressed="false">Notifications <span id="unread"></span></button>
   </nav>
   <main id="app"></main>
   <p id="feedback" role="status" aria-live="polite"></p>
