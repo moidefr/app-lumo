@@ -1,4 +1,4 @@
-# HandClub — bêta HTML / CSS / JavaScript
+# Lumo — bêta HTML / CSS / JavaScript
 
 Interface volontairement simple, sans framework ni étape de compilation. Les données initiales sont fictives.
 

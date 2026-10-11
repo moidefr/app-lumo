@@ -1,5 +1,5 @@
 {
-  "name": "handclub-beta",
+  "name": "lumo-beta",
   "private": true,
   "scripts": { "start": "node server.cjs", "test": "node tests.cjs" }
 }

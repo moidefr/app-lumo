@@ -1,4 +1,4 @@
-/* HandClub beta. No dependencies; all demo data is fictitious. */
+/* Lumo beta. No dependencies; all demo data is fictitious. */
 (() => {
   'use strict';
   const C=HandCore, $=selector=>document.querySelector(selector), E=C.esc;
@@ -199,13 +199,13 @@
       if(action==='open-notification'){const notification=state.notifications.find(item=>item.id===control.dataset.id);if(change(()=>notification.read=true)){eventId=notification.eventId;location.hash='event='+encodeURIComponent(eventId);render();}}
       if(action==='enable-notifications')await enableNotifications();
       if(action==='test-notification'){
-        if(!settings.localNotifications)await enableNotifications();if(settings.localNotifications)change(()=>notify('HandClub · test','Les notifications de test fonctionnent sur cet appareil.',state.events[0]?.id||null));
+        if(!settings.localNotifications)await enableNotifications();if(settings.localNotifications)change(()=>notify('Lumo · test','Les notifications de test fonctionnent sur cet appareil.',state.events[0]?.id||null));
       }
       if(action==='settings')settingsDialog();
-      if(action==='export-json')download('handclub-sauvegarde.json',JSON.stringify(state,null,2));
+      if(action==='export-json')download('lumo-sauvegarde.json',JSON.stringify(state,null,2));
       if(action==='restore-json'){
         if(auth&&settings.workspaceId)throw new Error('Déconnectez Supabase avant de restaurer une sauvegarde locale.');
-        const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async()=>{try{if(!input.files[0])return;if(input.files[0].size>5000000)throw new Error('Sauvegarde trop volumineuse.');const imported=C.validateState(JSON.parse(await input.files[0].text()));download('handclub-avant-restauration.json',JSON.stringify(state,null,2));state=imported;persist();closeModal();render();say('Sauvegarde restaurée.');}catch(err){error(err.message);}};input.click();
+        const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=async()=>{try{if(!input.files[0])return;if(input.files[0].size>5000000)throw new Error('Sauvegarde trop volumineuse.');const imported=C.validateState(JSON.parse(await input.files[0].text()));download('lumo-avant-restauration.json',JSON.stringify(state,null,2));state=imported;persist();closeModal();render();say('Sauvegarde restaurée.');}catch(err){error(err.message);}};input.click();
       }
       if(action==='load-full-demo'||action==='reset-demo'){
         if(auth&&settings.workspaceId)throw new Error('Déconnectez Supabase avant de charger la démo locale.');
@@ -243,13 +243,13 @@
       }
       if(action==='join-workspace')modal('Rejoindre un espace Supabase',`<p>Vos données locales seront exportées avant de charger celles de l’espace.</p><label><span>Code d’invitation de l’espace</span><input id="join-code" autocomplete="off"></label><button class="primary" data-action="confirm-join">Rejoindre</button>`);
       if(action==='confirm-join'){
-        const code=$('#join-code').value.trim();if(!code)throw new Error('Indiquez un code.');const joined=await rpc('join_beta_workspace',{p_code:code});download('handclub-avant-connexion.json',JSON.stringify(state,null,2));settings.workspaceId=joined.workspace_id;storeSettings();dirty=false;conflict=false;await loadCloud(true);closeModal();startPolling();say('Espace rejoint.');
+        const code=$('#join-code').value.trim();if(!code)throw new Error('Indiquez un code.');const joined=await rpc('join_beta_workspace',{p_code:code});download('lumo-avant-connexion.json',JSON.stringify(state,null,2));settings.workspaceId=joined.workspace_id;storeSettings();dirty=false;conflict=false;await loadCloud(true);closeModal();startPolling();say('Espace rejoint.');
       }
       if(action==='show-invite-code'){
         const result=await rpc('beta_workspace_invite',{p_id:settings.workspaceId});modal('Code de l’espace',`<label><span>Code à transmettre aux testeurs</span><input readonly value="${E(result.invite_code)}"></label><p>Les personnes qui rejoignent avec ce code peuvent lire et modifier tout cet espace de bêta.</p>`);
       }
       if(action==='reload-cloud'){
-        if(dirty||conflict)download('handclub-modifications-locales.json',JSON.stringify(state,null,2));dirty=false;conflict=false;await loadCloud(true);settingsDialog();say('Version Supabase rechargée.');
+        if(dirty||conflict)download('lumo-modifications-locales.json',JSON.stringify(state,null,2));dirty=false;conflict=false;await loadCloud(true);settingsDialog();say('Version Supabase rechargée.');
       }
       if(action==='sync-now'){await syncSave();if(!dirty&&!conflict)say('Synchronisation terminée.');}
       if(action==='subscribe-push')await subscribePush();
