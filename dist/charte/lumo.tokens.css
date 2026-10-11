@@ -1,29 +1,17 @@
-/* Lumo — proposition de charte bleu et turquoise, version 1. */
+/* Lumo · direction v3 */
 :root {
   --lumo-ink: #12314A;
   --lumo-primary: #1D4ED8;
-  --lumo-primary-hover: #173EAC;
   --lumo-teal: #007F87;
-  --lumo-teal-soft: #E7F7F7;
   --lumo-teal-text: #00666E;
+  --lumo-teal-soft: #E7F7F7;
   --lumo-background: #F5F8FC;
-  --lumo-surface: #FFFFFF;
   --lumo-text-secondary: #46586B;
-  --lumo-border: #DCE6ED;
-  --lumo-control-border: #71859A;
-  --lumo-success: #166534;
-  --lumo-success-bg: #EAF7EE;
-  --lumo-warning: #8A4B05;
-  --lumo-warning-bg: #FFF4DE;
-  --lumo-error: #B42318;
-  --lumo-error-bg: #FEEDEC;
-  --lumo-unknown: #475569;
-  --lumo-unknown-bg: #EEF2F6;
-  --lumo-radius-card: 16px;
-  --lumo-radius-button: 12px;
-  --lumo-radius-input: 10px;
+  --lumo-font-body: "Bricolage Grotesque", sans-serif;
+  --lumo-font-display: "Fraunces", serif;
+  --lumo-radius-ticket: 3px 20px 3px 3px;
+  --lumo-radius-panel: 3px 28px 3px 3px;
+  --lumo-button-shadow: 4px 4px 0 #12314A;
   --lumo-touch-target: 48px;
   --lumo-space-unit: 4px;
-  --lumo-font: ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

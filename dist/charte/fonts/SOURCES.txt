@@ -1,0 +1,2 @@
+Bricolage Grotesque et Fraunces : polices locales sous SIL Open Font License.
+https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400..800&family=Fraunces:ital,wght@0,400..900;1,400..900&display=swap

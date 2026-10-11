@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#245b45">
+  <meta name="theme-color" content="#12314A">
   <title>Lumo · Bêta</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="style.css">
   <script defer src="core.js"></script>
   <script defer src="demo.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
-  <header>
-    <div><strong>Lumo</strong> <span class="tag">Bêta</span></div>
+  <header class="site-header">
+    <div class="site-brand"><a class="brand" href="#" aria-label="Lumo · événements">lumo<span class="brand-point" aria-hidden="true">.</span></a><span class="tag">Bêta</span></div>
     <div class="toolbar"><span id="save-state">Mode local</span><button id="install" hidden>Installer</button><button data-action="load-full-demo">Charger la démo complète</button><button data-action="settings">Réglages</button></div>
   </header>
   <p class="notice">Bêta avec données fictives. Mode local : les données restent dans ce navigateur. Le mode coach sert à tester les fonctions.</p>
-  <nav aria-label="Navigation principale">
+  <nav class="site-nav" aria-label="Navigation principale">
     <button data-page="events" aria-pressed="true">Événements</button>
     <button data-page="groups" aria-pressed="false">Groupes</button>
     <button data-page="family" aria-pressed="false">Participants</button>
@@ -28,6 +29,6 @@
   <main id="app"></main>
   <p id="feedback" role="status" aria-live="polite"></p>
   <dialog id="editor"><div id="dialog-content"></div></dialog>
-  <footer>HTML / CSS / JavaScript · Exportez vos données avant de changer de navigateur.</footer>
+  <footer><span>Lumo · Les matchs, les trajets, les coups de main.</span><span>Exportez vos données avant de changer de navigateur.</span></footer>
 </body>
 </html>
