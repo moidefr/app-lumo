@@ -2,7 +2,7 @@
 -- Assertions run as authenticated/anon, not merely as the database owner.
 begin;
 do $$
-declare admin_id uuid=gen_random_uuid(); parent_id uuid=gen_random_uuid(); other_id uuid=gen_random_uuid(); club_id uuid; other_club uuid; ctx jsonb; payload jsonb; candidate jsonb; invitation jsonb; rev bigint; result_count bigint; nid uuid;
+declare g2 text; admin_id uuid=gen_random_uuid(); parent_id uuid=gen_random_uuid(); other_id uuid=gen_random_uuid(); club_id uuid; other_club uuid; ctx jsonb; payload jsonb; candidate jsonb; invitation jsonb; rev bigint; result_count bigint; nid uuid;
 begin
  insert into auth.users(id,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data) values
  (admin_id,'lumo-test-'||admin_id||'@example.invalid','',now(),'{"provider":"email","providers":["email"]}','{}'),
@@ -83,6 +83,33 @@ begin
  execute 'set local role anon';
  begin perform public.lumo_context(club_id); raise exception 'FAIL: anonymous RPC'; exception when insufficient_privilege then null; end;
  begin perform count(*) from public.lumo_clubs; raise exception 'FAIL: anonymous table'; exception when insufficient_privilege then null; end;
+ execute 'reset role';
+ execute 'set local role authenticated';
+ -- Parent: choix des groupes (uniquement participants liés)
+ perform set_config('request.jwt.claim.sub',admin_id::text,true); perform set_config('request.jwt.claims',jsonb_build_object('sub',admin_id,'role','authenticated')::text,true);
+ ctx=public.lumo_context(club_id); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint; g2=payload#>>'{groups,1,id}';
+ perform set_config('request.jwt.claim.sub',parent_id::text,true); perform set_config('request.jwt.claims',jsonb_build_object('sub',parent_id,'role','authenticated')::text,true);
+ candidate=jsonb_set(payload,'{members,0,groups}',to_jsonb(array['g13f',g2]));
+ ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ if payload#>'{members,0,groups}'<>jsonb_build_array('g13f',g2) then raise exception 'FAIL: parent linked child groups not saved'; end if;
+ candidate=jsonb_set(payload,'{members,1,groups}',jsonb_build_array(g2));
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent changes unlinked child groups'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{groups}',(payload->'groups')||jsonb_build_array(jsonb_set(payload->'groups'->0,'{id}','"gnew"')));
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent adds group'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events}',(payload->'events')||jsonb_build_array(jsonb_set(payload->'events'->0,'{id}','"event-new"')));
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent adds event'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,title}','"Pirated"');
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent edits event'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{members,0,name}','"Renamed"');
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent renames participant'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{members}',(payload->'members')||'[{"id":"child3","name":"Enfant 3","kind":"child","parentName":"X","groups":["g13f"]}]'::jsonb);
+ begin perform public.save_lumo_club(club_id,rev,candidate); raise exception 'FAIL: parent adds participant'; exception when insufficient_privilege then null; end;
+ candidate=jsonb_set(payload,'{events,0,attendees,0,availability}','"present"');
+ ctx=public.save_lumo_club(club_id,rev,candidate); payload=ctx->'payload'; rev=(ctx->>'revision')::bigint;
+ perform set_config('request.jwt.claim.sub',admin_id::text,true); perform set_config('request.jwt.claims',jsonb_build_object('sub',admin_id,'role','authenticated')::text,true);
+ candidate=jsonb_set(jsonb_set(payload,'{members,1,groups}',jsonb_build_array(g2)),'{members,1,name}','"Admin renamed"');
+ ctx=public.save_lumo_club(club_id,rev,candidate);
+ if ctx#>>'{payload,members,1,name}'<>'Admin renamed' then raise exception 'FAIL: admin full edit'; end if;
  execute 'reset role';
 end $$;
 select 'PASS: real authenticated/anon RLS, roles, linked family, vehicle ownership/capacity, volunteering, notifications, CAS and clean workspace' as result;

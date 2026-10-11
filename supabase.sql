@@ -162,7 +162,11 @@ end $$;
 create function lumo_private.validate_parent_changes(oldp jsonb,newp jsonb,m public.lumo_memberships) returns void language plpgsql set search_path='' as $$
 declare e jsonb; ne jsonb; a jsonb; na jsonb; o jsonb; no jsonb; mi jsonb; nm jsonb; g text;
 begin
- if (oldp-'events') is distinct from (newp-'events') or jsonb_array_length(oldp->'events')<>jsonb_array_length(newp->'events') then raise exception 'Les parents ne peuvent pas modifier l’organisation.' using errcode='42501'; end if;
+ if (oldp-'events'-'members') is distinct from (newp-'events'-'members') or jsonb_array_length(oldp->'events')<>jsonb_array_length(newp->'events') or jsonb_array_length(oldp->'members')<>jsonb_array_length(newp->'members') then raise exception 'Les parents ne peuvent pas modifier l’organisation.' using errcode='42501'; end if;
+ for mi in select value from jsonb_array_elements(oldp->'members') loop
+  select v into nm from jsonb_array_elements(newp->'members') v where v->>'id'=mi->>'id';
+  if nm is null or (case when (mi->>'id')=any(m.member_ids) then (mi-'groups') is distinct from (nm-'groups') else mi is distinct from nm end) then raise exception 'Vous pouvez choisir les groupes uniquement de votre famille.' using errcode='42501'; end if;
+ end loop;
  for e in select value from jsonb_array_elements(oldp->'events') loop
   select v into ne from jsonb_array_elements(newp->'events') v where v->>'id'=e->>'id';
   if ne is null or (e-array['attendees','offers','missions']) is distinct from (ne-array['attendees','offers','missions']) or jsonb_array_length(e->'attendees')<>jsonb_array_length(ne->'attendees') or jsonb_array_length(e->'missions')<>jsonb_array_length(ne->'missions') then raise exception 'Modification réservée au coach.' using errcode='42501'; end if;
