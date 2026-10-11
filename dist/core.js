@@ -36,7 +36,7 @@
   }
   function transportSummary(state,event,leg) {
     const attendees=activeAttendees(event),children=attendees.filter(attendee=>state.members.find(member=>member.id===attendee.memberId)?.kind==='child');
-    return {...capacity(event,leg),children:children.length,confirmed:children.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,need:attendees.filter(attendee=>attendee.transport[leg]==='need').length,unknown:attendees.filter(attendee=>attendee.transport[leg]==='unknown').length};
+    return {...capacity(event,leg),people:attendees.length,confirmedPeople:attendees.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,children:children.length,confirmed:children.filter(attendee=>['confirmed','parent'].includes(attendee.transport[leg])).length,need:attendees.filter(attendee=>attendee.transport[leg]==='need').length,unknown:attendees.filter(attendee=>attendee.transport[leg]==='unknown').length};
   }
   function checkOffer(offer) {
     if(!Number.isInteger(offer.totalSeats)||offer.totalSeats<2||offer.totalSeats>9)throw new Error('Une voiture doit avoir de 2 à 9 places, conducteur compris.');

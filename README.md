@@ -2,6 +2,14 @@
 
 Interface volontairement simple, sans framework ni étape de compilation. Les données initiales sont fictives.
 
+## Démo complète du club
+
+Nom du club : Handball Club Crest Pays de Saillans. Les noms des personnes, rencontres, lieux, horaires et missions sont fictifs, sans lien avec le calendrier réel du club.
+
+La démo contient 11 groupes/sous-groupes, 49 participants (26 enfants et 23 adultes), 12 événements et 6 notifications simulées. Les exemples couvrent un retour incomplet, un match entièrement organisé, un match à domicile, un tournoi intergroupes avec un véhicule 9 places, quatre entraînements hebdomadaires, un déplacement senior, une soirée, un match annulé et un exemple de provenance calendrier. Des missions sont déjà affectées, d’autres attendent des bénévoles.
+
+Le bouton « Charger la démo complète » conserve les données précédentes sur l’appareil. Pour les récupérer : Réglages → Restaurer les données avant la démo. Le premier chargement remplace automatiquement l’ancien exemple de cinq enfants et en garde une copie. Les espaces Supabase connectés ne sont pas remplacés. Aucune connexion Supabase n’a été ajoutée pour cette version.
+
 ## Démarrer
 
 Avec Node.js installé, depuis ce dossier :
