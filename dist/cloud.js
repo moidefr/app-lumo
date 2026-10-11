@@ -27,6 +27,8 @@
   }
   async function signIn(email,password){const value=await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email,password},anonymous:true});return keep(value);}
   async function signUp(email,password,name){const value=await request('/auth/v1/signup?redirect_to='+encodeURIComponent(cfg.siteUrl),{method:'POST',body:{email,password,data:{display_name:name}},anonymous:true});if(value.access_token)keep(value);return value;}
+  async function sendLink(email){await request('/auth/v1/otp?redirect_to='+encodeURIComponent(cfg.siteUrl),{method:'POST',body:{email,create_user:true},anonymous:true});}
+  async function verifyCode(email,token){const value=await request('/auth/v1/verify',{method:'POST',body:{type:'email',email,token:String(token).replace(/\s+/g,'')},anonymous:true});return keep(value);}
   async function signOut(){try{if(session)await request('/auth/v1/logout',{method:'POST'});}finally{keep(null);}}
   async function restore(){if(!session)return null;try{const user=await request('/auth/v1/user');session.user=user;localStorage.setItem(key,JSON.stringify(session));return user;}catch(e){if(!e.offline)keep(null);throw e;}}
   async function consumeCallback(){
@@ -35,7 +37,7 @@
     const value={access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token'),expires_in:Number(hash.get('expires_in')||3600)};
     const recovery=hash.get('type')==='recovery';history.replaceState(null,'',location.pathname+location.search);keep(value);await restore();return recovery;
   }
-  window.LumoCloud={request,rpc:(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',body}),session:()=>session,signIn,signUp,signOut,restore,consumeCallback,
+  window.LumoCloud={request,sendLink,verifyCode,rpc:(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',body}),session:()=>session,signIn,signUp,signOut,restore,consumeCallback,
     recover:email=>request('/auth/v1/recover?redirect_to='+encodeURIComponent(cfg.siteUrl),{method:'POST',body:{email},anonymous:true}),
     resetPassword:password=>request('/auth/v1/user',{method:'PUT',body:{password}}),
     listClubs:()=>request('/rest/v1/lumo_clubs?select=id,name,revision,updated_at&order=name'),
