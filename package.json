@@ -1,0 +1,5 @@
+{
+  "name": "handclub-beta",
+  "private": true,
+  "scripts": { "start": "node server.cjs", "test": "node tests.cjs" }
+}

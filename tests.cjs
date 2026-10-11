@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict');
+const C=require('./dist/core.js');
+let passed=0;
+function test(name,fn){fn();console.log('OK '+name);passed++;}
+const ics=`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:2966484\r\nDTSTART;TZID=Europe/Paris:20261010T163000\r\nSUMMARY:HBC CHABEUIL 18M vs LIVRON\r\n LORIOL\r\nURL:https://www.ffhandball.fr/competitions/rencontre-2729968/\r\nLOCATION:gymnase municipal\\, 17 RUE DES ECOLES\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+test('Données de démonstration valides',()=>C.validateState(C.seed()));
+test('Les sous-groupes ne dupliquent pas les enfants',()=>assert.equal(C.groupMembers(C.seed(),['g13','ggervanne']).filter(member=>member.id==='lea').length,1));
+test('Aller et retour ont des capacités indépendantes',()=>{const state=C.seed(),event=state.events[0];assert.equal(C.capacity(event,'outbound').free,1);assert.equal(C.capacity(event,'return').free,2);});
+test('Des places libres ne confirment pas le transport des enfants',()=>{const state=C.seed(),result=C.transportSummary(state,state.events[0],'outbound');assert.equal(result.children,5);assert.equal(result.confirmed,3);assert.equal(result.free,1);});
+test('Les absents ne sont pas comptés parmi les enfants à transporter',()=>{const state=C.seed();state.events[0].attendees.find(item=>item.memberId==='emma').availability='absent';assert.equal(C.transportSummary(state,state.events[0],'outbound').children,4);});
+test('Une voiture ne peut pas proposer plus que sa capacité',()=>{const offer=C.clone(C.seed().events[0].offers[0]);offer.legs.outbound.offered=3;assert.throws(()=>C.checkOffer(offer));});
+test('Les places prises ne dépassent pas les places proposées',()=>{const offer=C.clone(C.seed().events[0].offers[0]);offer.legs.return.reserved=4;assert.throws(()=>C.checkOffer(offer));});
+test('Un passager ne peut pas être présent dans deux voitures du même trajet',()=>{const state=C.seed();state.events[0].offers.push(C.clone(state.events[0].offers[0]));assert.throws(()=>C.validateState(state));});
+test('Les cycles de groupes sont refusés',()=>{const state=C.seed();state.groups[0].parentId='ggervanne';assert.throws(()=>C.validateState(state));});
+test('Le parseur iCal conserve les lignes repliées, horaires et adresses',()=>{const parsed=C.parseIcs(ics).records[0];assert.equal(parsed.title,'HBC CHABEUIL 18M vs LIVRONLORIOL');assert.equal(parsed.time,'16:30');assert.equal(parsed.date,'2026-10-10');assert.equal(parsed.address,'gymnase municipal, 17 RUE DES ECOLES');assert.equal(parsed.key,'ffhandball:2729968');});
+test('Les dates UTC sont converties à Paris en été et hiver',()=>{assert.equal(C.parisDateTime('20261010T143000Z').time,'16:30');assert.equal(C.parisDateTime('20261210T143000Z').time,'15:30');});
+test('Les dates invalides sont ignorées',()=>assert.throws(()=>C.parseIcs(ics.replace('20261010T163000','20260231T163000'))));
+test('Le même match réimporté ne crée pas de doublon',()=>{const state=C.seed(),records=C.parseIcs(ics).records;C.importRecords(state,records,'g13');const result=C.importRecords(state,records,'g13');assert.equal(state.events.length,2);assert.equal(result.unchanged,1);});
+test('Changer un horaire préserve voitures, rendez-vous et réponses',()=>{const state=C.seed(),records=C.parseIcs(ics).records;C.importRecords(state,records,'g13');const event=state.events[1];event.meetingTime='12:45';event.offers=[C.clone(state.events[0].offers[0])];event.attendees[0].transport.outbound='confirmed';const result=C.importRecords(state,[{...records[0],time:'18:00',uid:'new-uid'}],'g13');assert.equal(result.updated,1);assert.equal(event.meetingTime,'12:45');assert.equal(event.offers.length,1);assert.equal(event.attendees[0].transport.outbound,'confirmed');assert.equal(event.time,'18:00');});
+test('Un match absent de l’import reste présent',()=>{const state=C.seed();C.importRecords(state,C.parseIcs(ics).records,'g13');C.importRecords(state,[],'g13');assert.equal(state.events.length,2);assert.equal(state.events[1].cancelled,false);});
+test('Une annulation explicite est importée',()=>{const state=C.seed(),record=C.parseIcs(ics).records[0];C.importRecords(state,[{...record,cancelled:true}],'g13');assert.equal(state.events[1].cancelled,true);});
+test('Les noms sont échappés pour le HTML',()=>assert.equal(C.esc('<img onerror="bad">'),'&lt;img onerror=&quot;bad&quot;&gt;'));
+console.log(passed+' tests réussis.');
