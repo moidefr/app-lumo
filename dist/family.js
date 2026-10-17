@@ -11,7 +11,7 @@
   const LEGS = [['outbound', 'Aller'], ['return', 'Retour']];
   const $ = s => document.querySelector(s);
   const storeKey = 'lumo-f:' + token.slice(0, 12);
-  let store = { mine: [], name: '' };
+  let store = { mine: [], name: '', defaults: {} };
   try { store = { ...store, ...JSON.parse(localStorage.getItem(storeKey) || '{}') }; } catch {}
   const openHelp = new Set(); let tab = 'home', groupFilter = '', failures = 0, state = null, base = null, revision = 0, clubName = '', dirty = false, saving = false, timer = null, screen = 'loading', error = '', changing = false, search = '', pickDraft = [];
   let dialogEvent = null;
@@ -128,6 +128,30 @@
       if (join) { if (a.availability === 'absent') throw new Error('Dites d’abord que vous venez à l’entraînement.'); a.availability = 'present'; a.transport = { outbound: 'need', return: 'need' }; }
       else { if (e.offers.some(c => c.onboard.includes(id) && Object.values(c.legs).some(l => l.enabled))) throw new Error('Cet enfant est dans une voiture : modifiez la voiture pour le retirer.'); a.transport = { outbound: 'unknown', return: 'unknown' }; }
       stamp(a);
+    });
+  }
+  // Réponses habituelles : appliquées une seule fois aux rendez-vous à venir sans réponse, modifiables ensuite à tout moment.
+  const usualFor = (id, e) => { const d = store.defaults?.[id]; return d ? (isTraining(e) ? d.training : d.match) : null; };
+  function applyUsual() {
+    if (!state) return;
+    const todo = [];
+    for (const e of upcoming()) for (const a of myAttendees(e)) {
+      if (a.answeredAt) continue;
+      const u = usualFor(a.memberId, e); if (!u) continue;
+      const onboard = e.offers.some(c => c.onboard.includes(a.memberId) && Object.values(c.legs).some(l => l.enabled));
+      const presence = ['present', 'absent'].includes(u.presence) && a.availability !== u.presence && !(u.presence === 'absent' && onboard);
+      const onLeg = l => e.offers.some(c => c.legs[l].enabled && c.onboard.includes(a.memberId));
+      const moves = !isTraining(e) && a.availability !== 'absent' && ['outbound', 'return'].some(l => !onLeg(l) && ['need', 'parent'].includes(u[l]) && a.transport[l] !== u[l]);
+      if (presence || moves) todo.push([e.id, a.memberId, u]);
+    }
+    if (!todo.length) return;
+    commit(() => {
+      for (const [eid, id, u] of todo) {
+        const e = state.events.find(x => x.id === eid), a = attendee(e, id), onboard = e.offers.some(c => c.onboard.includes(id) && Object.values(c.legs).some(l => l.enabled));
+        if (['present', 'absent'].includes(u.presence) && !(u.presence === 'absent' && onboard)) a.availability = u.presence;
+        if (!isTraining(e) && a.availability !== 'absent') for (const l of ['outbound', 'return']) if (['need', 'parent'].includes(u[l]) && !e.offers.some(c => c.legs[l].enabled && c.onboard.includes(id))) a.transport[l] = u[l];
+        a.answeredBy = 'Réponse habituelle';
+      }
     });
   }
   function stamp(a) { a.answeredBy = store.name || 'Un parent'; a.answeredAt = new Date().toISOString(); }
@@ -265,10 +289,21 @@
     return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Calendrier</h1></div></div><label><span>Groupe</span><select id="f-group"><option value="">Tous les groupes</option>${state.groups.map(g => `<option value="${E(g.id)}" ${g.id === groupFilter ? 'selected' : ''}>${E(g.name)}</option>`).join('')}</select></label><div class="grid">${list.map(card).join('') || '<p class="empty">Aucun rendez-vous à venir.</p>'}</div>`;
   }
 
+  function usualCard(id) {
+    const d = store.defaults?.[id] || {}, t = d.training || {}, m = d.match || {};
+    const sel = (scope, key, cur, options) => `<label><span>${options.label}</span><select data-def="${scope}.${key}" data-m="${E(id)}">${options.items.map(([v, text]) => `<option value="${v}" ${(cur || '') === v ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
+    const presence = [['', 'Je choisis à chaque fois'], ['present', 'Je viens'], ['absent', 'Je ne viens pas']];
+    const transport = [['', 'Je choisis à chaque fois'], ['need', 'A besoin d’une place'], ['parent', 'Avec ses parents']];
+    return `<section class="card"><h2>Réponses habituelles de ${E(first(id))}</h2><p class="muted">Elles s’appliquent toutes seules aux prochains rendez-vous sans réponse. Vous pouvez les changer à tout moment depuis l’accueil.</p>
+      <h3>Entraînements</h3>${sel('training', 'presence', t.presence, { label: 'Présence', items: presence })}
+      <h3>Matchs et autres événements</h3>${sel('match', 'presence', m.presence, { label: 'Présence', items: presence })}${sel('match', 'outbound', m.outbound, { label: 'Aller', items: transport })}${sel('match', 'return', m.return, { label: 'Retour', items: transport })}</section>`;
+  }
+
   function familyTab() {
     const kids = mine();
     return `${demoBanner()}<div class="f-head"><div><p class="eyebrow">${E(clubName)}</p><h1>Ma famille</h1></div></div>
       <section class="card"><h2>Mes enfants</h2>${kids.map(id => `<p><strong>${E(member(id).name)}</strong> ${member(id).groups.map(g => `<span class="chip">${E(state.groups.find(x => x.id === g)?.name || '')}</span>`).join('')}</p>`).join('') || '<p class="muted">Aucun enfant choisi.</p>'}<div class="actions"><button class="primary" data-f="who">Changer d’enfant</button><button data-f="add-child">Ajouter un enfant</button></div></section>
+      ${kids.map(id => usualCard(id)).join('')}
       <section class="card"><h2>Mon prénom</h2><p class="muted">Il apparaît sur les voitures et les coups de main.</p><label><span>Prénom</span><input id="f-myname" maxlength="40" value="${E(store.name)}" autocomplete="given-name"></label></section>
       <section class="card"><h2>L’autre parent</h2><p>Parents séparés ? Envoyez-lui ce même lien : il touche le même enfant et répond lui aussi. La réponse la plus récente fait foi.</p><div class="actions"><button class="primary" data-f="share">Envoyer le lien</button><button data-f="copy">Copier le lien</button></div></section>`;
   }
@@ -351,7 +386,7 @@
     else if (a === 'who') { pickDraft = [...mine()]; search = ''; screen = 'who'; render(); }
     else if (a === 'who-cancel') { screen = 'home'; render(); }
     else if (a === 'who-done') {
-      store.mine = [...pickDraft]; store.name = ($('#f-name')?.value || store.name || '').trim(); remember(); screen = 'home'; render();
+      store.mine = [...pickDraft]; store.name = ($('#f-name')?.value || store.name || '').trim(); remember(); screen = 'home'; render(); applyUsual();
     }
     else if (a === 'add-child') addChildDialog();
     else if (a === 'close') closeDialog();
@@ -365,6 +400,11 @@
   document.addEventListener('toggle', ev => { const d = ev.target; if (d.classList?.contains('help')) { if (d.open) openHelp.add(d.dataset.e); else openHelp.delete(d.dataset.e); } }, true);
   document.addEventListener('change', ev => {
     const el = ev.target;
+    if (el.dataset.def) {
+      const [scope, key] = el.dataset.def.split('.'), id = el.dataset.m;
+      store.defaults = store.defaults || {}; store.defaults[id] = store.defaults[id] || {}; store.defaults[id][scope] = { ...(store.defaults[id][scope] || {}), [key]: el.value };
+      remember(); say('Réponse habituelle enregistrée.'); applyUsual(); return;
+    }
     if (el.id === 'f-group') { groupFilter = el.value; render(); return; }
     if (el.dataset.f === 'pick') { pickDraft = el.checked ? [...new Set([...pickDraft, el.value])] : pickDraft.filter(x => x !== el.value); const go = document.querySelector('[data-f="who-done"]'); if (go) go.disabled = !pickDraft.length; }
   });
@@ -400,13 +440,13 @@
   /* ---------- démarrage ---------- */
   async function boot() {
     screen = 'loading'; render();
-    try { await pull(); screen = mine().length ? 'home' : 'who'; pickDraft = [...mine()]; }
+    try { await pull(); screen = mine().length ? 'home' : 'who'; pickDraft = [...mine()]; setTimeout(applyUsual, 0); }
     catch (e) { screen = 'error'; error = e.offline ? 'Pas de connexion. Vérifiez internet puis réessayez.' : e.message; }
     indicator(); render();
   }
   setInterval(async () => {
     if (document.hidden || dirty || saving || !state || screen !== 'home' || $('#editor')?.open) return;
-    try { const r = await rpc('lumo_link_open', { p_token: token }); if (r.club.revision !== revision) { apply(r); render(); } } catch { /* silencieux */ }
+    try { const r = await rpc('lumo_link_open', { p_token: token }); if (r.club.revision !== revision) { apply(r); render(); applyUsual(); } } catch { /* silencieux */ }
   }, 12000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && dirty) flush(); });
   window.addEventListener('online', () => { if (dirty) flush(); });

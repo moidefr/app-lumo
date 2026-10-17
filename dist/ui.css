@@ -169,3 +169,38 @@ body input:not([type=checkbox]):not([type=radio]),body select,body textarea{bord
 
 .seg3{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 .leg .status{margin:8px 0 0}
+
+/* ===== Alignement des anciens écrans sur le style de l'accueil (mise en page inchangée) ===== */
+.event-info,.summary>div,.car-card,.welcome-steps article{background:#fff;border:1px solid var(--line)!important;border-radius:var(--radius)!important;box-shadow:var(--shadow)}
+.event-info strong,.summary strong{font-family:var(--body)}
+.event-info strong{color:var(--blue-dark);letter-spacing:.05em}
+.summary strong{font-weight:750;letter-spacing:-.02em}
+.summary .warning{background:var(--warn-soft);border-color:#E9CE95!important}
+.summary .success{background:var(--ok-soft);border-color:#A9D8B7!important}
+.car-card h3{font-weight:750}
+.car-layout{grid-template-columns:1fr!important}
+@media (min-width:900px){.car-layout{grid-template-columns:1fr 1fr!important}}
+.tabs{border:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff;padding:6px;border-radius:14px;gap:6px;margin:16px 0}
+body .tabs button{border-radius:10px;min-height:46px;padding:8px 14px;border:0;background:transparent}
+body .tabs button[aria-pressed=true]{background:var(--blue);color:#fff}
+.windscreen{background:var(--blue-soft)!important;border-bottom:0!important}
+.notification{padding:14px 0}
+.notification.unread{border-left:0;padding-left:0}
+.notification.unread strong::after{content:'Nouveau';margin-left:8px;background:var(--blue-soft);color:var(--blue-dark);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+.member-line{padding:14px 0}
+.member-line:last-child{border:0}
+.welcome-steps b{font:700 14px var(--body)!important;color:var(--blue-dark);letter-spacing:.04em}
+.welcome-steps article h2{font-size:21px}
+.calendar-filters{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:0 0 14px;display:grid;gap:10px}
+.quick-help{border-left:0}
+.table-wrap{border:1px solid var(--line);border-radius:12px;background:#fff}
+table th{font-weight:700;color:var(--muted)}
+.welcome h1{font-size:34px}
+.danger{background:var(--bad-soft)!important;color:var(--bad)!important;border-color:#F3C2C2!important}
+.verdicts{display:flex;flex-wrap:wrap;gap:6px}
+/* en-tête et barre du bas compacts, rien ne déborde */
+body .toolbar button{min-height:40px;padding:6px 10px;font-size:13px}
+#coach-toggle{max-width:112px;white-space:normal!important;line-height:1.1}
+.toolbar{min-width:0}
+body .site-nav button{font-size:12px;padding:6px 2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (min-width:900px){body .site-nav button{font-size:16px;padding:8px 18px}}
