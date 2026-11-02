@@ -4,7 +4,7 @@ Guide de reprise — 17 octobre 2026.
 
 ## Commence ici
 
-Le projet à continuer est dans **`C:\Users\G\Dev\2-c\app-lumo`**.
+Le projet à continuer est dans **`C:\Users\G\Dev\outils\lumo`**.
 
 Ce dossier contient déjà des améliorations faites après notre première session : entraînements, réponses habituelles, attribution des places, écrans famille et retouches d’interface. Ces fichiers et leurs modifications en cours ont été conservés. **Ne remplace pas ce dossier par l’ancienne version.**
 
@@ -17,7 +17,7 @@ Le but maintenant : vérifier un parcours complet parent/coach, terminer les not
 Ouvre le dossier dans ton éditeur, puis un terminal à cet emplacement :
 
 ```powershell
-cd C:\Users\G\Dev\2-c\app-lumo
+cd C:\Users\G\Dev\outils\lumo
 npm start
 ```
 
@@ -174,4 +174,4 @@ Les tests automatiques ne remplacent pas les essais avec deux comptes et un vrai
 
 ## Prompt pour reprendre avec un assistant
 
-> Travaille dans C:\Users\G\Dev\2-c\app-lumo. Lis COMMENT-FINIR-LUMO.md, README-BACKEND.md et supabase/NOTIFICATIONS-STATUS.md. Préserve les modifications locales existantes. Commence par tester la version actuelle, puis termine le parcours avec deux comptes parent/coach, la compatibilité Supabase des entraînements et de l’attribution des places, les conflits de synchronisation et les notifications sur téléphone. Vérifie l’état distant avant toute migration ou redéploiement. Garde la charte et la séparation démo/données réelles. Ne rends pas les données publiques et ne mets aucune clé secrète dans le navigateur. Indique les points non vérifiés avant la publication.
+> Travaille dans C:\Users\G\Dev\outils\lumo. Lis COMMENT-FINIR-LUMO.md, README-BACKEND.md et supabase/NOTIFICATIONS-STATUS.md. Préserve les modifications locales existantes. Commence par tester la version actuelle, puis termine le parcours avec deux comptes parent/coach, la compatibilité Supabase des entraînements et de l’attribution des places, les conflits de synchronisation et les notifications sur téléphone. Vérifie l’état distant avant toute migration ou redéploiement. Garde la charte et la séparation démo/données réelles. Ne rends pas les données publiques et ne mets aucune clé secrète dans le navigateur. Indique les points non vérifiés avant la publication.
